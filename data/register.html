@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Register — Attendance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 480px; }
+
+    .field { margin-bottom: 1.1rem; display: flex; flex-direction: column; gap: .4rem; }
+
+    label {
+      font-size: .67rem;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    label .req { color: var(--danger); margin-left: 2px; }
+
+    input[type="text"],
+    select {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: .6rem .8rem;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: .88rem;
+      outline: none;
+      transition: border-color .18s, box-shadow .18s;
+      appearance: none;
+      -webkit-appearance: none;
+      width: 100%;
+    }
+    input:focus, select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(0,200,150,.1);
+    }
+    .field.invalid input,
+    .field.invalid select { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(224,92,92,.1); }
+
+    .sel-wrap { position: relative; }
+    .sel-wrap::after {
+      content: '\25BE';
+      position: absolute; right: .8rem; top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted); pointer-events: none;
+    }
+
+    .vmsg { font-size: .67rem; color: var(--danger); display: none; }
+    .field.invalid .vmsg { display: block; }
+
+    .uid-wrap { position: relative; }
+    .uid-wrap input { padding-right: 3.5rem; }
+    .uid-badge {
+      position: absolute; right: .65rem; top: 50%;
+      transform: translateY(-50%);
+      font-size: .58rem; letter-spacing: .08em;
+      color: var(--accent); border: 1px solid rgba(0,200,150,.3);
+      border-radius: 3px; padding: .1rem .38rem; pointer-events: none;
+    }
+    #scan-status {
+      font-size: .68rem; color: var(--accent);
+      min-height: 1rem;
+    }
+
+    .field-divider { height: 1px; background: var(--border); margin: .4rem 0 1rem; }
+
+    .btn {
+      width: 100%; margin-top: .4rem;
+      background: var(--accent); color: #0f1117;
+      border: none; border-radius: 4px;
+      padding: .72rem; cursor: pointer;
+      font-family: var(--font); font-size: .83rem;
+      font-weight: bold; letter-spacing: .13em; text-transform: uppercase;
+      transition: background .18s, opacity .18s;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-h); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar">
+  <a href="/select-class.html" class="nb-brand"></a>
+  <div class="nb-right">
+    <div class="nb-cls-sel">
+      <select id="nb-cls-select"></select>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<div class="confirm-bg" id="confirm-modal">
+  <div class="confirm-box">
+    <p>Confirm: <strong id="confirm-label"></strong></p>
+    <div class="confirm-actions">
+      <button class="confirm-yes" id="confirm-yes-btn">OK</button>
+      <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="page-wrap">
+  <a class="back-btn" href="/students.html">Students</a>
+  <div class="card">
+    <h2>Register Student</h2>
+
+    <div class="field" id="field-name">
+      <label>Name <span class="req">*</span></label>
+      <input type="text" id="f-name" placeholder="Full name" autocomplete="off">
+      <span class="vmsg">Required</span>
+    </div>
+
+    <div class="field" id="field-roll">
+      <label>Roll No</label>
+      <input type="text" id="f-roll" placeholder="e.g. 101" autocomplete="off">
+    </div>
+
+    <div class="field" id="field-batchtime">
+      <label>Batch <span class="req">*</span></label>
+      <div class="sel-wrap">
+        <select id="f-batch">
+          <option value="">— select —</option>
+        </select>
+      </div>
+      <span class="vmsg">Required</span>
+    </div>
+
+    <div class="field" id="field-uid">
+      <label>Card UID <span class="req">*</span></label>
+      <div class="uid-wrap">
+        <input type="text" id="f-uid" placeholder="Scan or enter UID" autocomplete="off">
+        <span class="uid-badge">RFID</span>
+      </div>
+      <div id="scan-status"></div>
+      <span class="vmsg">Required</span>
+    </div>
+
+    <div id="extra-fields"></div>
+
+    <button class="btn" id="reg-btn" onclick="submitRegister()">Register</button>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  var g_schema = [];
+  var g_class  = 0;
+  var CORE_KEYS = { name: 1, roll: 1, card_uid: 1, batchtime: 1 };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('register');
+    getSession().then(function (s) {
+      if (!s.class) { location.href = '/select-class.html'; return; }
+      g_class = s.class;
+      loadBatches(s.class);
+      loadSchema();
+      startUidPoll();
+    }).catch(function () { location.href = '/login.html'; });
+  });
+
+  function loadBatches(cn) {
+    api('/api/batches?c=' + cn).then(function (arr) {
+      var sel = document.getElementById('f-batch');
+      (arr || []).forEach(function (t) {
+        var opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  function loadSchema() {
+    api('/api/schema').then(function (s) {
+      g_schema = (s.student || []).filter(function (c) {
+        return c.ask && !CORE_KEYS[c.key];
+      });
+      if (!g_schema.length) return;
+      var container = document.getElementById('extra-fields');
+      var hr = document.createElement('div');
+      hr.className = 'field-divider';
+      container.appendChild(hr);
+      g_schema.forEach(function (col) {
+        var wrap = document.createElement('div');
+        wrap.className = 'field';
+        wrap.id = 'field-extra-' + col.key;
+        wrap.innerHTML =
+          '<label>' + col.label + (col.required ? ' <span class="req">*</span>' : '') + '</label>' +
+          '<input type="text" id="f-extra-' + col.key + '" placeholder="' + col.label + '" autocomplete="off">' +
+          '<span class="vmsg">Required</span>';
+        container.appendChild(wrap);
+      });
+    });
+  }
+
+  function validateField(id, required) {
+    var el = document.getElementById(id);
+    if (!el) return true;
+    var wrap = el.closest('.field');
+    var ok = !required || el.value.trim().length > 0;
+    if (wrap) wrap.classList.toggle('invalid', !ok);
+    return ok;
+  }
+
+  function submitRegister() {
+    var ok = true;
+    ok = validateField('f-name',  true) && ok;
+    ok = validateField('f-batch', true) && ok;
+    ok = validateField('f-uid',   true) && ok;
+    g_schema.forEach(function (col) {
+      if (col.required) ok = validateField('f-extra-' + col.key, true) && ok;
+    });
+    if (!ok) { showToast('Fill required fields', true); return; }
+
+    var body = {
+      name:      document.getElementById('f-name').value.trim(),
+      roll:      document.getElementById('f-roll').value.trim(),
+      card_uid:  document.getElementById('f-uid').value.trim(),
+      batchtime: document.getElementById('f-batch').value,
+    };
+    g_schema.forEach(function (col) {
+      var val = document.getElementById('f-extra-' + col.key).value.trim();
+      if (val) body['extra_' + col.key] = val;
+    });
+
+    var btn = document.getElementById('reg-btn');
+    btn.disabled = true; btn.textContent = 'Registering\u2026';
+
+    api('/api/students/register', 'POST', body).then(function () {
+      showToast('Registered!');
+      ['f-name', 'f-roll', 'f-uid'].forEach(function (id) {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('f-batch').selectedIndex = 0;
+      document.getElementById('scan-status').textContent = '';
+      g_schema.forEach(function (c) {
+        var el = document.getElementById('f-extra-' + c.key);
+        if (el) el.value = '';
+      });
+      document.querySelectorAll('.field.invalid').forEach(function (el) {
+        el.classList.remove('invalid');
+      });
+    }).catch(function (e) {
+      showToast(e.message, true);
+    }).finally(function () {
+      btn.disabled = false; btn.textContent = 'Register';
+    });
+  }
+
+  function startUidPoll() {
+    var lastSeq = 0;
+    setInterval(function () {
+      fetch('/api/rfid-events', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (!d || !d.seq || d.seq === lastSeq) return;
+          lastSeq = d.seq;
+          var el = document.getElementById('f-uid');
+          if (el && !el.value && d.uid) {
+            el.value = d.uid;
+            var st = document.getElementById('scan-status');
+            if (st) st.textContent = '\u2713 ' + d.uid;
+          }
+        }).catch(function () {});
+    }, 1500);
+  }
+</script>
+</body>
+</html>

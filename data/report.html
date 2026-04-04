@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Report — Attendance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 980px; }
+    .controls {
+      display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap;
+      margin-bottom: 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border);
+    }
+    .controls .field { margin: 0; }
+    .pct-cell  { min-width: 130px; }
+    .pct-num   { font-size: .82rem; font-weight: bold; margin-bottom: .22rem; }
+    tfoot td   { font-weight: bold; color: var(--accent); font-size: .76rem; letter-spacing: .07em; padding: .7rem .9rem; border-top: 2px solid var(--accent); }
+    .export-btn { margin-left: auto; }
+    #summary-bar {
+      display: flex; gap: 1.5rem; flex-wrap: wrap;
+      margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border);
+    }
+    #summary-bar .sb { display: flex; flex-direction: column; gap: .2rem; }
+    #summary-bar .sv { font-size: 1.3rem; font-weight: bold; }
+    #summary-bar .sl { font-size: .59rem; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
+    @media (max-width: 500px) {
+      .controls { flex-direction: column; align-items: stretch; }
+      .controls .btn { align-self: flex-start; }
+      .export-btn { margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/select-class.html" class="nb-brand"></a>
+  <div class="nb-right">
+    <div class="nb-cls-sel">
+      <select id="nb-cls-select"></select>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<div class="page-wrap">
+  <div class="card">
+    <h2>Monthly Report</h2>
+
+    <div class="controls">
+      <div class="field">
+        <label>Month</label>
+        <input type="month" id="month-pick">
+      </div>
+      <button class="btn btn-sm" style="align-self:flex-end;margin-top:0" onclick="loadReport()">Generate</button>
+      <a id="csv-btn" class="btn btn-sm btn-outline export-btn" style="align-self:flex-end;margin-top:0;display:none" href="#" download>↓ Export CSV</a>
+    </div>
+
+    <div id="summary-wrap" style="display:none">
+      <div id="summary-bar">
+        <div class="sb"><span class="sv sv-grey"  id="rp-days">—</span><span class="sl">Class Days</span></div>
+        <div class="sb"><span class="sv sv-grey"  id="rp-students">—</span><span class="sl">Students</span></div>
+        <div class="sb"><span class="sv sv-green" id="rp-ok">—</span><span class="sl">Above Threshold</span></div>
+        <div class="sb"><span class="sv sv-warn"  id="rp-below">—</span><span class="sl">Below Threshold</span></div>
+      </div>
+    </div>
+
+    <div id="loading" style="display:none" class="empty"><span class="spinner"></span></div>
+
+    <div class="tbl-wrap">
+      <table id="rep-table" style="display:none">
+        <thead>
+          <tr>
+            <th class="num-col">#</th>
+            <th>Name</th>
+            <th>Roll</th>
+            <th>Present</th>
+            <th>Att%</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="rep-body"></tbody>
+        <tfoot><tr id="rep-foot"></tr></tfoot>
+      </table>
+    </div>
+    <div class="empty" id="rep-empty" style="display:none">No data for selected month.</div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  var g_class = 0;
+
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('report');
+
+    /* Default to current month (current year + current month) */
+    var now = new Date();
+    document.getElementById('month-pick').value =
+      now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+    getSession().then(function (s) {
+      if (!s.class) { location.href = '/select-class.html'; return; }
+      g_class = s.class;
+      /* Load report for current month immediately */
+      loadReport();
+    }).catch(function () { location.href = '/login.html'; });
+  });
+
+  function loadReport() {
+    var month  = document.getElementById('month-pick').value;
+    if (!month) { showToast('Select a month', true); return; }
+
+    document.getElementById('loading').style.display     = 'block';
+    document.getElementById('rep-table').style.display   = 'none';
+    document.getElementById('rep-empty').style.display   = 'none';
+    document.getElementById('summary-wrap').style.display = 'none';
+    document.getElementById('csv-btn').style.display     = 'none';
+
+    api('/api/report?c=' + g_class + '&month=' + month)
+      .then(function (data) {
+        document.getElementById('loading').style.display = 'none';
+        if (!data.rows || !data.rows.length) {
+          document.getElementById('rep-empty').style.display = 'block';
+          return;
+        }
+
+        var minPct = data.min_pct || 75;
+        var belowCount = data.rows.filter(function (r) { return (r.pct || 0) < minPct; }).length;
+        var okCount    = data.rows.length - belowCount;
+
+        document.getElementById('rp-days').textContent     = data.class_days || 0;
+        document.getElementById('rp-students').textContent = data.rows.length;
+        document.getElementById('rp-ok').textContent       = okCount;
+        document.getElementById('rp-below').textContent    = belowCount;
+        document.getElementById('summary-wrap').style.display = 'block';
+
+        var tbody = document.getElementById('rep-body');
+        tbody.innerHTML = '';
+        data.rows.forEach(function (r, i) {
+          var pct    = Math.round(r.pct || 0);
+          var cls    = pct >= minPct ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red';
+          var barCls = pct >= minPct ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red';
+          var status = pct >= minPct
+            ? '<span class="badge badge-green">OK</span>'
+            : '<span class="badge badge-warn">Low</span>';
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td class="num-col">' + (i+1) + '</td>' +
+            '<td data-label="Name">' + esc(r.name) + '</td>' +
+            '<td data-label="Roll">'  + esc(r.roll) + '</td>' +
+            '<td data-label="Present">' + (r.present || 0) + ' / ' + (data.class_days || 0) + '</td>' +
+            '<td data-label="Att%" class="pct-cell">' +
+              '<div class="pct-num ' + cls + '">' + pct + '%</div>' +
+              '<div class="pct-bar-wrap"><div class="pct-bar ' + barCls + '" style="width:' + pct + '%"></div></div>' +
+            '</td>' +
+            '<td data-label="Status">' + status + '</td>';
+          tbody.appendChild(tr);
+        });
+
+        var total  = data.rows.length;
+        var avgPct = total ? Math.round(data.rows.reduce(function (s,r) { return s + (r.pct || 0); }, 0) / total) : 0;
+        document.getElementById('rep-foot').innerHTML =
+          '<td colspan="3">Class Average</td><td></td>' +
+          '<td>' + avgPct + '%</td>' +
+          '<td>' + okCount + '/' + total + ' OK</td>';
+
+        document.getElementById('rep-table').style.display = 'table';
+
+        var csvBtn = document.getElementById('csv-btn');
+        csvBtn.href = '/api/admin/export-csv?c=' + g_class + '&type=attendance&month=' + month;
+        csvBtn.style.display = 'inline-flex';
+      })
+      .catch(function (e) {
+        document.getElementById('loading').style.display = 'none';
+        showToast(e.message, true);
+      });
+  }
+
+  function esc(v) { return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+</script>
+</body>
+</html>

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Students — Attendance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 960px; }
+    .att-pct   { font-size: .8rem; }
+    .arch-row td { opacity: .55; }
+    .arch-row:hover td { opacity: .8; }
+
+    /* ── Clickable name ───────────────────────────── */
+    .name-link {
+      color: var(--text); cursor: pointer;
+      border-bottom: 1px dashed transparent;
+      transition: color .15s, border-color .15s;
+    }
+    .name-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Detail popup (zero-padding, sections own spacing) ── */
+    #detail-modal .modal {
+      max-width: 640px;
+      padding: 0;
+      overflow-y: auto;
+      max-height: 92vh;
+    }
+    .dm-close {
+      position: absolute; top: .8rem; right: .8rem;
+      background: none; border: 1px solid var(--border); border-radius: 3px;
+      padding: .2rem .55rem; cursor: pointer; color: var(--muted);
+      font-family: var(--font); font-size: .68rem; z-index: 1;
+      transition: all .15s;
+    }
+    .dm-close:hover { color: var(--danger); border-color: var(--danger); }
+
+    /* avatar strip */
+    .dm-header {
+      position: relative;
+      display: flex; align-items: center; gap: 1rem;
+      padding: 1.1rem 1.3rem 1rem;
+      background: linear-gradient(135deg,rgba(0,200,150,.07) 0%,transparent 70%);
+      border-bottom: 1px solid var(--border);
+    }
+    .dm-avatar {
+      width: 50px; height: 50px; border-radius: 10px; flex-shrink: 0;
+      background: rgba(0,200,150,.12); border: 1px solid rgba(0,200,150,.28);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; font-weight: bold; color: var(--accent);
+    }
+    .dm-name { font-size: 1rem; font-weight: bold; color: var(--text); }
+    .dm-sub  { font-size: .65rem; color: var(--muted); letter-spacing: .07em; margin-top: .22rem; }
+
+    /* attendance bar strip */
+    .dm-att-bar {
+      display: flex; align-items: center; gap: .85rem;
+      padding: .75rem 1.3rem;
+      background: var(--stat-bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .dm-att-pct { font-size: 1.5rem; font-weight: bold; min-width: 54px; }
+    .dm-att-lbl { font-size: .57rem; color: var(--muted); text-transform: uppercase; letter-spacing: .13em; margin-top: .1rem; }
+    .dm-att-wrap { flex: 1; }
+    .dm-att-note { font-size: .6rem; color: var(--muted); margin-top: .3rem; }
+
+    /* key-value grid */
+    .dm-fields {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+      border-bottom: 1px solid var(--border);
+    }
+    .dm-field { padding: .65rem 1.1rem; border-right: 1px solid var(--border); }
+    .dm-field:last-child { border-right: none; }
+    .dm-fkey { font-size: .55rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: .2rem; }
+    .dm-fval { font-size: .82rem; color: var(--text); word-break: break-all; }
+    .dm-fval.accent { color: var(--accent); font-weight: bold; }
+    .dm-fval.warn   { color: var(--warn); }
+
+    @media (max-width: 520px) {
+      .dm-fields { grid-template-columns: 1fr 1fr; }
+      .dm-field  { border-right: none; }
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/select-class.html" class="nb-brand"></a>
+  <div class="nb-right">
+    <div class="nb-cls-sel">
+      <select id="nb-cls-select"></select>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<!-- Confirm modal -->
+<div class="confirm-bg" id="confirm-modal">
+  <div class="confirm-box">
+    <p><strong id="confirm-label"></strong></p>
+    <div class="confirm-actions">
+      <button class="confirm-yes" id="confirm-yes-btn">Confirm</button>
+      <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal-bg" id="edit-modal">
+  <div class="modal">
+    <h3>Edit Student</h3>
+    <div class="field">
+      <label>Name <span class="req">*</span></label>
+      <input type="text" id="em-name">
+    </div>
+    <div class="field">
+      <label>Roll No <span class="req">*</span></label>
+      <input type="text" id="em-roll">
+    </div>
+    <div class="field">
+      <label>Card UID <span class="req">*</span></label>
+      <input type="text" id="em-uid">
+    </div>
+    <div class="field">
+      <label>Batch Time <span class="req">*</span></label>
+      <div class="sel-wrap"><select id="em-batch"></select></div>
+    </div>
+    <input type="hidden" id="em-uid-orig">
+    <div class="modal-actions">
+      <button class="modal-save"   onclick="submitEdit()">Save Changes</button>
+      <button class="modal-cancel" onclick="closeModal('edit-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ Student Detail Popup ════════════ -->
+<div class="modal-bg" id="detail-modal">
+  <div class="modal" style="position:relative">
+
+    <button class="dm-close" onclick="closeModal('detail-modal')">&#10005; Close</button>
+
+    <div class="dm-header">
+      <div class="dm-avatar" id="dm-avatar">?</div>
+      <div>
+        <div class="dm-name" id="dm-name">—</div>
+        <div class="dm-sub"  id="dm-sub">—</div>
+      </div>
+    </div>
+
+    <div class="dm-att-bar" id="dm-att-bar" style="display:none">
+      <div>
+        <div class="dm-att-pct" id="dm-pct">—</div>
+        <div class="dm-att-lbl">Attendance</div>
+      </div>
+      <div class="dm-att-wrap">
+        <div class="pct-bar-wrap"><div class="pct-bar" id="dm-bar" style="width:0%"></div></div>
+        <div class="dm-att-note" id="dm-pct-note"></div>
+      </div>
+    </div>
+
+    <div class="dm-fields" id="dm-fields"></div>
+
+  </div>
+</div>
+<!-- ════════════════════════════════════════════ -->
+
+<div class="page-wrap">
+  <div class="card">
+    <h2>Students</h2>
+    <div class="toolbar">
+      <div class="search-wrap">
+        <input type="text" id="search" placeholder="Search name or roll…" oninput="filterRows()">
+      </div>
+      <div class="filter-bar" style="margin:0;flex-shrink:0">
+        <button class="ftab active-all" data-f="all"      onclick="setFilter('all',this)">All</button>
+        <button class="ftab"            data-f="active"   onclick="setFilter('active',this)">Active</button>
+      </div>
+      <a href="/register.html" class="btn btn-sm" style="white-space:nowrap;flex-shrink:0">+ Register</a>
+    </div>
+
+    <div id="loading" class="empty"><span class="spinner"></span></div>
+
+    <div class="tbl-wrap">
+      <table id="tbl" style="display:none">
+        <thead>
+          <tr id="thead-row">
+            <th class="num-col">#</th>
+            <th>Name</th>
+            <th>Roll</th>
+            <th>Batch</th>
+            <th>Att%</th>
+            <th class="actions-col"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="empty-msg" style="display:none">No students found.</div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  var g_students = [];
+  var g_class    = 0;
+  var g_batches  = [];
+  var g_schema   = [];
+
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('students');
+    getSession().then(function (s) {
+      if (!s.class) { location.href = '/select-class.html'; return; }
+      g_class = s.class;
+      loadBatches();
+      loadSchema();
+      loadStudents();
+    }).catch(function () { location.href = '/login.html'; });
+  });
+
+  function loadBatches() {
+    api('/api/batches?c=' + g_class).then(function (arr) {
+      g_batches = arr || [];
+      var sel = document.getElementById('em-batch');
+      sel.innerHTML = '';
+      g_batches.forEach(function (t) {
+        var opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        sel.appendChild(opt);
+      });
+    });
+  }
+
+  function loadSchema() {
+    api('/api/schema').then(function (s) {
+      g_schema = (s.student || []).filter(function (c) {
+        return !c.system && !c['default'] &&
+               ['name','roll','card_uid','batchtime'].indexOf(c.key) === -1 && c.ask;
+      });
+      /* Rebuild table header with any extra schema columns */
+      var tr = document.getElementById('thead-row');
+      if (tr) {
+        tr.querySelectorAll('.schema-th').forEach(function (th) { th.remove(); });
+        var actTh = tr.querySelector('.actions-col');
+        g_schema.forEach(function (col) {
+          var th = document.createElement('th');
+          th.className = 'schema-th';
+          th.textContent = col.label;
+          tr.insertBefore(th, actTh);
+        });
+      }
+      renderTable();
+    });
+  }
+
+  function loadStudents() {
+    g_students = [];
+    var loading  = document.getElementById('loading');
+    var tbl      = document.getElementById('tbl');
+    var emptyMsg = document.getElementById('empty-msg');
+    var tbody    = document.getElementById('tbody');
+
+    if (tbl)      tbl.style.display      = 'none';
+    if (emptyMsg) emptyMsg.style.display = 'none';
+    if (loading)  loading.style.display  = 'block';
+
+    apiStream(
+      '/api/students?c=' + g_class,
+
+      /* onItem — called once per student as it arrives from the server */
+      function (s) {
+        /* First row: show the table immediately */
+        if (g_students.length === 0) {
+          if (loading)  loading.style.display  = 'none';
+          if (tbl)      tbl.style.display      = 'table';
+          if (emptyMsg) emptyMsg.style.display = 'none';
+        }
+        g_students.push(s);
+
+        /* Append this row directly — no full re-render needed */
+        var rowNum   = g_students.length;
+        var pct      = s.att_pct != null ? Math.round(s.att_pct) : null;
+        var pctColor = pct !== null
+          ? (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red')
+          : 'sv-grey';
+        var sJson = JSON.stringify(s).replace(/"/g, '&quot;');
+
+        var tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td class="num-col">' + rowNum + '</td>' +
+          '<td data-label="Name">' +
+            '<span class="name-link" onclick="openDetail(' + sJson + ')">' +
+              esc(s.name) +
+            '</span>' +
+          '</td>' +
+          '<td data-label="Roll">'  + esc(s.roll || '—') + '</td>' +
+          '<td data-label="Batch">' + esc(s.batchtime || '—') + '</td>' +
+          '<td data-label="Att%" class="att-pct ' + pctColor + '">' +
+            (pct !== null ? pct + '%' : '—') +
+          '</td>' +
+          g_schema.map(function (col) {
+            var v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
+            return '<td data-label="' + esc(col.label) + '">' + esc(String(v)) + '</td>';
+          }).join('') +
+          '<td class="actions-col">' + actionsHtml(s) + '</td>';
+
+        tbody.appendChild(tr);
+      },
+
+      /* onDone — stream finished; do a final proper render so search/filter
+         and schema columns are all correct from the start */
+      function () {
+        if (loading) loading.style.display = 'none';
+        if (g_students.length === 0) {
+          if (tbl)      tbl.style.display      = 'none';
+          if (emptyMsg) emptyMsg.style.display = 'block';
+        } else {
+          renderTable(); /* definitive render: correct numbering, filter, schema cols */
+        }
+      },
+
+      /* onError */
+      function (e) {
+        if (loading) loading.textContent = 'Error: ' + e.message;
+      }
+    );
+  }
+
+  function setFilter(f, btn) {
+    document.querySelectorAll('.ftab').forEach(function (b) {
+      b.className = 'ftab' + (b.dataset.f === f ? ' active-all' : '');
+    });
+    renderTable();
+  }
+
+  function filterRows() { renderTable(); }
+
+  function renderTable() {
+    var q    = document.getElementById('search').value.toLowerCase();
+    var filt = document.querySelector('.ftab.active-all');
+    var f    = filt ? filt.dataset.f : 'all';
+
+    var rows = g_students.filter(function (s) {
+      if (f === 'active' && s.archived) return false;
+      /* f === 'all' shows every student including archived */
+      if (q && !(s.name.toLowerCase().includes(q) ||
+                 String(s.roll).toLowerCase().includes(q))) return false;
+      return true;
+    });
+
+    var tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+
+    if (!rows.length) {
+      document.getElementById('tbl').style.display     = 'none';
+      document.getElementById('empty-msg').style.display = 'block';
+      return;
+    }
+    document.getElementById('tbl').style.display     = 'table';
+    document.getElementById('empty-msg').style.display = 'none';
+
+    rows.forEach(function (s, i) {
+      var pct      = s.att_pct != null ? Math.round(s.att_pct) : null;
+      var pctColor = pct !== null ? (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red') : 'sv-grey';
+      var sJson    = JSON.stringify(s).replace(/"/g, '&quot;');
+      var tr       = document.createElement('tr');
+
+      tr.innerHTML =
+        '<td class="num-col">' + (i + 1) + '</td>' +
+        '<td data-label="Name">' +
+          '<span class="name-link" onclick="openDetail(' + sJson + ')">' + esc(s.name) + '</span>' +
+        '</td>' +
+        '<td data-label="Roll">'  + esc(s.roll || '—') + '</td>' +
+        '<td data-label="Batch">' + esc(s.batchtime || '—') + '</td>' +
+        '<td data-label="Att%" class="att-pct ' + pctColor + '">' +
+          (pct !== null ? pct + '%' : '—') +
+        '</td>' +
+        g_schema.map(function (col) {
+          var v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
+          return '<td data-label="' + esc(col.label) + '">' + esc(String(v)) + '</td>';
+        }).join('') +
+        '<td class="actions-col">' + actionsHtml(s) + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function actionsHtml(s) {
+    return '<button class="act-btn" onclick="openEdit(' + JSON.stringify(s).replace(/"/g, '&quot;') + ')">Edit</button> ' +
+           '<button class="act-btn act-btn-del" onclick="doDelete(\'' + s.uid + '\',\'' + esc(s.name) + '\')">Delete</button>';
+  }
+
+  /* ══════════════ Detail Popup ══════════════ */
+  function openDetail(s) {
+    var initials = (s.name || '?').trim().split(/\s+/)
+                    .map(function (w) { return w[0] || ''; })
+                    .join('').slice(0, 2).toUpperCase();
+    document.getElementById('dm-avatar').textContent = initials || '?';
+    document.getElementById('dm-name').textContent   = s.name || '—';
+    document.getElementById('dm-sub').textContent    =
+      'Roll: ' + (s.roll || '—') + '  ·  Batch: ' + (s.batchtime || '—') + '  ·  UID: ' + (s.uid || '—');
+
+    var pct    = s.att_pct != null ? Math.round(s.att_pct) : null;
+    var attBar = document.getElementById('dm-att-bar');
+    if (pct !== null) {
+      attBar.style.display = 'flex';
+      var pctEl = document.getElementById('dm-pct');
+      pctEl.textContent = pct + '%';
+      pctEl.className   = 'dm-att-pct ' + (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red');
+      var barEl = document.getElementById('dm-bar');
+      barEl.style.width = pct + '%';
+      barEl.className   = 'pct-bar ' + (pct >= 75 ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red');
+      document.getElementById('dm-pct-note').textContent = pct >= 75 ? '✓ Above threshold' : '⚠ Below threshold';
+    } else {
+      attBar.style.display = 'none';
+    }
+
+    var coreFields = [
+      { k: 'Card UID', v: s.uid       || '—' },
+      { k: 'Roll No',  v: s.roll      || '—' },
+      { k: 'Batch',    v: s.batchtime || '—' },
+      { k: 'Status',   v: s.archived ? 'Archived' : 'Active',
+        cls: s.archived ? 'warn' : 'accent' },
+      { k: 'Sessions', v: s.sessions != null ? String(s.sessions) : '—' },
+    ];
+    var fHtml = coreFields.map(function (f) {
+      return '<div class="dm-field"><div class="dm-fkey">' + esc(f.k) + '</div>' +
+             '<div class="dm-fval' + (f.cls ? ' ' + f.cls : '') + '">' + esc(f.v) + '</div></div>';
+    }).join('');
+    g_schema.forEach(function (col) {
+      if (['name','roll','uid','card_uid','batchtime'].indexOf(col.key) !== -1) return;
+      var v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
+      fHtml += '<div class="dm-field"><div class="dm-fkey">' + esc(col.label) + '</div>' +
+               '<div class="dm-fval">' + esc(String(v)) + '</div></div>';
+    });
+    document.getElementById('dm-fields').innerHTML = fHtml;
+
+    openModal('detail-modal');
+  }
+
+  /* ══════════════ Archive / edit / delete ══════════════ */
+  function doArchive(uid, name) {
+    confirmAction('Archive ' + name + '?', function () {
+      api('/api/students/archive?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
+        .then(function () { showToast('Archived'); loadStudents(); })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+  function doRestore(uid) {
+    api('/api/students/restore?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
+      .then(function () { showToast('Restored'); loadStudents(); })
+      .catch(function (e) { showToast(e.message, true); });
+  }
+  function doDelete(uid, name) {
+    confirmAction('Permanently delete ' + name + '? This cannot be undone.', function () {
+      api('/api/students/delete?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
+        .then(function () { showToast('Deleted'); loadStudents(); })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  function openEdit(s) {
+    document.getElementById('em-uid-orig').value = s.uid;
+    document.getElementById('em-name').value     = s.name;
+    document.getElementById('em-roll').value     = s.roll;
+    document.getElementById('em-uid').value      = s.uid;
+    var sel = document.getElementById('em-batch');
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === s.batchtime) { sel.selectedIndex = i; break; }
+    }
+    openModal('edit-modal');
+  }
+  function submitEdit() {
+    var body = {
+      uid_orig:  document.getElementById('em-uid-orig').value,
+      name:      document.getElementById('em-name').value.trim(),
+      roll:      document.getElementById('em-roll').value.trim(),
+      card_uid:  document.getElementById('em-uid').value.trim(),
+      batchtime: document.getElementById('em-batch').value,
+    };
+    if (!body.name || !body.roll || !body.card_uid) { showToast('Fill all fields', true); return; }
+    api('/api/students/edit', 'POST', body)
+      .then(function () { closeModal('edit-modal'); showToast('Updated'); loadStudents(); })
+      .catch(function (e) { showToast(e.message, true); });
+  }
+
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+</script>
+</body>
+</html>

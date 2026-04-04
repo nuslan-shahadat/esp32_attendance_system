@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WiFi Config — Attendance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 600px; }
+    .wifi-status { display: flex; flex-direction: column; gap: .35rem; margin-bottom: 1.5rem; padding: 1rem 1.25rem; background: var(--stat-bg); border: 1px solid var(--border); border-radius: 5px; }
+    .ws-row { display: flex; align-items: center; justify-content: space-between; font-size: .82rem; }
+    .ws-label { color: var(--muted); font-size: .67rem; letter-spacing: .11em; text-transform: uppercase; }
+    .net-row {
+      display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+      padding: .65rem .8rem; border-bottom: 1px solid var(--border); cursor: pointer;
+      transition: background .14s; border-radius: 3px;
+    }
+    .net-row:last-child { border-bottom: none; }
+    .net-row:hover { background: var(--row-hover); }
+    .net-ssid  { font-size: .85rem; }
+    .net-rssi  { font-size: .68rem; color: var(--muted); display: flex; align-items: center; gap: .5rem; }
+    .net-lock  { font-size: .7rem; }
+    .sig-bar   { display: flex; gap: 2px; align-items: flex-end; height: 14px; }
+    .sig-bar span { width: 4px; background: var(--border); border-radius: 1px; }
+    .sig-bar span.on { background: var(--accent); }
+    #scan-list { min-height: 60px; }
+    .pwd-wrap { position: relative; }
+    .pwd-wrap input { padding-right: 2.5rem; }
+    .eye-btn {
+      position: absolute; right: .7rem; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--dim); cursor: pointer;
+      font-size: .85rem; padding: 0; line-height: 1;
+    }
+    .eye-btn:hover { color: var(--accent); }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/select-class.html" class="nb-brand"></a>
+  <div class="nb-right">
+    <div class="nb-cls-sel">
+      <select id="nb-cls-select"></select>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+    <div class="theme-switch">
+      <span class="ts-icon" id="ts-icon">☀</span>
+      <div class="ts-track" id="ts-track" onclick="toggleTheme()"><div class="ts-thumb"></div></div>
+    </div>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<div class="confirm-bg" id="confirm-modal">
+  <div class="confirm-box">
+    <p><strong id="confirm-label"></strong></p>
+    <div class="confirm-actions">
+      <button class="confirm-yes" id="confirm-yes-btn">OK</button>
+      <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="page-wrap">
+  <div class="card">
+    <h2>WiFi Configuration</h2>
+
+    <!-- Current status -->
+    <div class="wifi-status" id="wifi-status">
+      <div class="ws-row"><span class="ws-label">Mode</span><span id="ws-mode">—</span></div>
+      <div class="ws-row"><span class="ws-label">SSID</span><span id="ws-ssid">—</span></div>
+      <div class="ws-row"><span class="ws-label">IP</span><span id="ws-ip">—</span></div>
+      <div class="ws-row"><span class="ws-label">Signal</span><span id="ws-rssi">—</span></div>
+    </div>
+
+    <!-- Connect to network -->
+    <h2>Connect to Network</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem">
+      <span style="font-size:.7rem;color:var(--muted)">Select a network below or enter SSID manually</span>
+      <button class="btn btn-sm btn-outline" style="width:auto;margin-top:0" onclick="doScan()">↺ Scan</button>
+    </div>
+
+    <div id="scan-loading" class="empty" style="display:none"><span class="spinner"></span> Scanning…</div>
+    <div id="scan-list"></div>
+
+    <div class="field" style="margin-top:1rem">
+      <label>SSID <span class="req">*</span></label>
+      <input type="text" id="f-ssid" placeholder="Network name" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <div class="pwd-wrap">
+        <input type="password" id="f-pass" placeholder="Leave blank for open network">
+        <button class="eye-btn" type="button" onclick="togglePwd()">👁</button>
+      </div>
+    </div>
+    <button class="btn" onclick="doConnect()">Connect &amp; Save</button>
+
+    <!-- AP Mode -->
+    <h2 style="margin-top:2rem">Hotspot Mode</h2>
+    <p style="font-size:.78rem;color:var(--muted);margin-bottom:.9rem;line-height:1.6">
+      Switch to access-point mode so devices can connect directly to the ESP32.
+    </p>
+    <button class="btn btn-warn" onclick="doStartAP()">Switch to AP Mode</button>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('wifi');
+    getSession().catch(function () { location.href = '/login.html'; });
+    loadStatus();
+    doScan();
+  });
+
+  function loadStatus() {
+    api('/api/wifi/status').then(function (s) {
+      document.getElementById('ws-mode').textContent = s.mode  || '—';
+      document.getElementById('ws-ssid').textContent = s.ssid  || (s.mode === 'AP' ? s.ap_ssid : '—');
+      document.getElementById('ws-ip').textContent   = s.ip    || '—';
+      document.getElementById('ws-rssi').textContent = s.rssi != null ? s.rssi + ' dBm' : '—';
+    }).catch(function () {});
+  }
+
+  function doScan() {
+    document.getElementById('scan-loading').style.display = 'block';
+    document.getElementById('scan-list').innerHTML = '';
+    api('/api/wifi/scan').then(function (nets) {
+      document.getElementById('scan-loading').style.display = 'none';
+      if (!nets || !nets.length) {
+        document.getElementById('scan-list').innerHTML = '<div class="empty">No networks found.</div>';
+        return;
+      }
+      document.getElementById('scan-list').innerHTML = nets.map(function (n) {
+        var bars = sigBars(n.rssi);
+        return '<div class="net-row" onclick="selectNet(\'' + esc(n.ssid) + '\')">' +
+          '<div><div class="net-ssid">' + esc(n.ssid) + '</div>' +
+          '<div class="net-rssi">' + (n.rssi || '?') + ' dBm ' + (n.secured ? '<span class="net-lock">🔒</span>' : '') + '</div></div>' +
+          '<div class="sig-bar">' + bars + '</div>' +
+        '</div>';
+      }).join('');
+    }).catch(function (e) {
+      document.getElementById('scan-loading').style.display = 'none';
+      document.getElementById('scan-list').innerHTML = '<div class="empty">Scan failed: ' + e.message + '</div>';
+    });
+  }
+
+  function sigBars(rssi) {
+    var strength = rssi >= -55 ? 4 : rssi >= -67 ? 3 : rssi >= -78 ? 2 : 1;
+    var heights = [5, 8, 11, 14];
+    return heights.map(function (h, i) {
+      return '<span style="height:' + h + 'px' + (i < strength ? ';background:var(--accent)' : '') + '"></span>';
+    }).join('');
+  }
+
+  function selectNet(ssid) {
+    document.getElementById('f-ssid').value = ssid;
+    document.getElementById('f-pass').focus();
+  }
+
+  function togglePwd() {
+    var inp = document.getElementById('f-pass');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  }
+
+  function doConnect() {
+    var ssid = document.getElementById('f-ssid').value.trim();
+    var pass = document.getElementById('f-pass').value;
+    if (!ssid) { showToast('Enter an SSID', true); return; }
+    confirmAction('Connect to "' + ssid + '"? The device will restart.', function () {
+      api('/api/wifi/save', 'POST', { ssid: ssid, pass: pass }).then(function () {
+        showToast('Saved — reconnecting…');
+      }).catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  function doStartAP() {
+    confirmAction('Switch to AP mode? You will need to reconnect.', function () {
+      api('/api/wifi/start-ap', 'POST', {}).then(function () {
+        showToast('AP mode activated');
+        setTimeout(loadStatus, 3000);
+      }).catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  function esc(v) { return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+</script>
+</body>
+</html>

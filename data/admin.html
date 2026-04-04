@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Attendance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 780px; }
+
+    /* Hidden file inputs */
+    #csv-file, #att-zip-file { display: none; }
+
+    /* ── Admin box sections ── */
+    .data-section { margin-bottom: 1.75rem; padding-bottom: 1.75rem; border-bottom: 1px solid var(--border); }
+    .data-section:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+    .data-btns { display: flex; gap: .6rem; flex-wrap: wrap; }
+
+    .adv-section { margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+    .adv-section:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+    .adv-label {
+      font-size: .65rem; letter-spacing: .18em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: .9rem; display: flex; align-items: center; gap: .5rem;
+    }
+
+    /* ── Color pair ── */
+    .color-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    @media (max-width: 500px) { .color-pair { grid-template-columns: 1fr; } }
+
+    /* ── Font size slider ── */
+    .size-row { display: flex; align-items: center; gap: 1rem; }
+    .size-row input[type=range] { flex: 1; }
+    .size-val { font-size: .82rem; color: var(--accent); min-width: 36px; text-align: right; }
+
+    /* ── Modern batch card ── */
+    .batch-add-card {
+      background: var(--stat-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.1rem;
+      margin-top: .85rem;
+    }
+    .batch-add-card-title {
+      font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: .75rem; display: flex; align-items: center; gap: .4rem;
+    }
+    .batch-add-row { display: flex; gap: .65rem; align-items: center; flex-wrap: wrap; }
+    .batch-add-row .sel-wrap { flex: 1; min-width: 130px; }
+    .batch-time-input { flex: 0 0 140px; }
+
+    /* ── Batch list tags ── */
+    .batch-tag-list { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .65rem; }
+    .batch-tag {
+      display: inline-flex; align-items: center; gap: .35rem;
+      background: var(--badge-bg); border: 1px solid var(--border);
+      border-radius: 20px; padding: .22rem .7rem .22rem .75rem;
+      font-size: .72rem; color: var(--text);
+    }
+    .batch-tag-del {
+      background: none; border: none; cursor: pointer;
+      color: var(--danger); font-size: .8rem; line-height: 1;
+      padding: 0 .1rem; opacity: .7; transition: opacity .15s;
+    }
+    .batch-tag-del:hover { opacity: 1; }
+
+    /* ── Import section ── */
+    .import-card {
+      background: var(--stat-bg); border: 1px dashed var(--border);
+      border-radius: 6px; padding: .9rem 1rem; margin-top: .75rem;
+    }
+    .import-card-title {
+      font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: .65rem;
+    }
+    .import-row { display: flex; gap: .55rem; align-items: center; flex-wrap: wrap; }
+    .import-row .sel-wrap { flex: 1; min-width: 110px; }
+
+    /* ── Field sections ── */
+    .field-group { margin-bottom: 1.1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+    .field-group:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+    .field-group-title {
+      font-size: .72rem; font-weight: bold; color: var(--text);
+      margin-bottom: .75rem; display: flex; align-items: center; gap: .4rem;
+    }
+    .schema-add-row {
+      display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .65rem;
+    }
+    .schema-add-row input { flex: 1; min-width: 120px; }
+
+    /* ── System restart ── */
+    .restart-card {
+      display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;
+      background: rgba(255,180,0,.05); border: 1px solid rgba(255,180,0,.18);
+      border-radius: 6px; padding: .85rem 1rem;
+    }
+    .restart-icon { font-size: 1.4rem; flex-shrink: 0; opacity: .75; }
+    .restart-desc { flex: 1; font-size: .78rem; color: var(--muted); min-width: 180px; }
+
+    @media (max-width: 500px) {
+      .import-row { flex-direction: column; align-items: stretch; }
+      .batch-add-row { flex-direction: column; align-items: stretch; }
+      .batch-time-input { flex: none; width: 100%; }
+    }
+
+    /* ── Upload Progress Modal ── */
+    .upload-modal-bg {
+      display: none; position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,.62); align-items: center; justify-content: center;
+    }
+    .upload-modal-bg.show { display: flex; }
+    .upload-modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 2rem 2.5rem; min-width: 220px; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,.4);
+    }
+    .upload-ring {
+      width: 56px; height: 56px; margin: 0 auto .9rem;
+      border: 4px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .75s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .upload-label { font-size: .78rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+    .upload-sublabel { font-size: .68rem; color: var(--dim); margin-top: .3rem; }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/select-class.html" class="nb-brand"></a>
+  <div class="nb-right">
+    <div class="nb-cls-sel">
+      <select id="nb-cls-select"></select>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<div class="confirm-bg" id="confirm-modal">
+  <div class="confirm-box">
+    <p><strong id="confirm-label"></strong></p>
+    <div class="confirm-actions">
+      <button class="confirm-yes" id="confirm-yes-btn">Confirm</button>
+      <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="csv-file"     accept=".csv"      onchange="importCsv()">
+<input type="file" id="att-zip-file" accept=".csv" onchange="importAttZip()">
+
+<div class="page-wrap">
+  <div class="card">
+    <h2>Admin Panel</h2>
+
+    <div class="panel-selector">
+      <button id="btn-basic" class="active" onclick="switchPanel('basic')">⊞ Basic</button>
+      <button id="btn-advanced" onclick="switchPanel('advanced')">⚙ Advanced</button>
+    </div>
+
+    <!-- ═══════════════════════ BASIC PANEL ═══════════════════════════ -->
+    <div id="panel-basic">
+
+      <!-- CLASS MANAGEMENT -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">◈</div>
+          <div>
+            <div class="admin-box-title">Class Management</div>
+            <div class="admin-box-desc">Add or remove class groups</div>
+          </div>
+        </div>
+        <div id="classes-list"><span class="spinner"></span></div>
+        <div class="inline-form" style="margin-top:1rem">
+          <input type="number" id="new-class" placeholder="Class no. (e.g. 11)" min="1" max="12">
+          <button class="btn btn-sm" onclick="addClass()">+ Add Class</button>
+        </div>
+      </div>
+
+      <!-- BATCH TIME MANAGEMENT — modern card style -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">⏱</div>
+          <div>
+            <div class="admin-box-title">Batch Time Management</div>
+            <div class="admin-box-desc">Configure session times per class</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Select Class</label>
+          <div class="sel-wrap"><select id="batch-cls" onchange="loadBatches()"></select></div>
+        </div>
+
+        <!-- Existing batches as pill tags -->
+        <div id="batches-tag-list" class="batch-tag-list" style="min-height:2rem">
+          <span class="spinner"></span>
+        </div>
+
+        <!-- Modern add-batch card -->
+        <div class="batch-add-card">
+          <div class="batch-add-card-title">⊕ Add New Batch Time</div>
+          <div class="batch-add-row">
+            <input type="time" id="new-batch" class="batch-time-input" placeholder="HH:MM">
+            <button class="btn btn-sm" style="white-space:nowrap" onclick="addBatch()">+ Add Batch</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DATA IMPORT / EXPORT -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">⇅</div>
+          <div>
+            <div class="admin-box-title">Data Import / Export</div>
+            <div class="admin-box-desc">Transfer student and attendance data</div>
+          </div>
+        </div>
+
+        <!-- Registration Data -->
+        <div class="field-group">
+          <div class="field-group-title">📋 Registration Data</div>
+          <div class="field">
+            <label>Export Class</label>
+            <div class="sel-wrap"><select id="exp-cls"></select></div>
+          </div>
+          <div class="data-btns" style="margin-bottom:.75rem">
+            <button class="btn btn-sm btn-outline" onclick="exportCsv('students')">↓ Students CSV</button>
+          </div>
+
+          <!-- Import card — FIXED: sends file as raw body instead of broken FormData -->
+          <div class="import-card">
+            <div class="import-card-title">↑ Import Students CSV</div>
+            <div class="import-row">
+              <div class="sel-wrap">
+                <select id="imp-cls"></select>
+              </div>
+              <div class="sel-wrap">
+                <select id="imp-type">
+                  <option value="students">Students</option>
+                  <option value="attendance">Attendance</option>
+                </select>
+              </div>
+              <button class="btn btn-sm" onclick="document.getElementById('csv-file').click()">
+                ↑ Choose CSV
+              </button>
+            </div>
+            <div class="hint" style="margin-top:.5rem">Select class and type, then choose a .csv file.</div>
+          </div>
+        </div>
+
+        <!-- Attendance Data -->
+        <div class="field-group">
+          <div class="field-group-title">📅 Attendance Data</div>
+          <div class="field">
+            <label>Export Class</label>
+            <div class="sel-wrap"><select id="att-exp-cls"></select></div>
+          </div>
+          <div class="data-btns">
+            <button class="btn btn-sm btn-outline" onclick="exportAttCsv()">↓ Attendance CSV</button>
+            <button class="btn btn-sm btn-outline" onclick="exportAttZipAll()">↓ All Data (ZIP)</button>
+          </div>
+          <div class="import-card" style="margin-top:.75rem">
+            <div class="import-card-title">↑ Import Attendance CSV</div>
+            <button class="btn btn-sm" onclick="document.getElementById('att-zip-file').click()">↑ Choose CSV</button>
+            <div class="hint" style="margin-top:.5rem">Select a CSV file exported from this system.</div>
+          </div>
+        </div>
+
+        <!-- SD Backup -->
+        <div class="field-group">
+          <div class="field-group-title">💾 SD Card Backup</div>
+          <button class="btn btn-sm" style="width:auto" onclick="doBackup()">▣ Backup to SD Now</button>
+        </div>
+      </div>
+
+      <!-- ATTENDANCE SETTINGS -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">◇</div>
+          <div>
+            <div class="admin-box-title">Attendance Settings</div>
+            <div class="admin-box-desc">Minimum threshold and alert configuration</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Minimum Attendance %</label>
+          <input type="number" id="min-att" value="75" min="0" max="100" style="max-width:120px">
+          <span class="hint">Students below this threshold are flagged in reports.</span>
+        </div>
+        <button class="btn btn-sm" style="width:auto" onclick="saveSettings()">Save Settings</button>
+      </div>
+
+    </div><!-- /panel-basic -->
+
+    <!-- ═══════════════════════ ADVANCED PANEL ════════════════════════ -->
+    <div id="panel-advanced" style="display:none">
+
+      <!-- COLUMN SCHEMA — with proper field spacing -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">⊞</div>
+          <div>
+            <div class="admin-box-title">Column Schema</div>
+            <div class="admin-box-desc">Manage custom fields for students and attendance</div>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">👤 Student Fields</div>
+          <div id="sch-student-list"></div>
+          <div class="schema-add-row">
+            <input type="text" id="sch-s-key"   placeholder="field_key (no spaces)">
+            <input type="text" id="sch-s-label" placeholder="Display Label">
+            <button class="btn btn-sm" onclick="addSchemaCol('student')">+ Add Field</button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <div class="field-group-title">📋 Attendance Fields</div>
+          <div id="sch-att-list"></div>
+          <div class="schema-add-row">
+            <input type="text" id="sch-a-key"   placeholder="field_key (no spaces)">
+            <input type="text" id="sch-a-label" placeholder="Display Label">
+            <button class="btn btn-sm" onclick="addSchemaCol('attendance')">+ Add Field</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- APPEARANCE — font as dropdown, not grid -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">✦</div>
+          <div>
+            <div class="admin-box-title">Appearance</div>
+            <div class="admin-box-desc">Font, size, and accent color preferences</div>
+          </div>
+        </div>
+
+        <!-- Font Family — dropdown instead of grid -->
+        <div class="field" style="margin-bottom:1.1rem">
+          <label>Font Family</label>
+          <div class="sel-wrap">
+            <select id="font-select" onchange="previewFont(this.value)"></select>
+          </div>
+        </div>
+
+        <!-- Font Size -->
+        <div class="field" style="margin-bottom:1.1rem">
+          <label>Font Size</label>
+          <div class="size-row">
+            <input type="range" id="font-size-range" min="11" max="18" step="1" value="14"
+                   oninput="previewFontSize(this.value)">
+            <span class="size-val" id="font-size-val">14px</span>
+          </div>
+        </div>
+
+        <!-- Accent Color -->
+        <div style="margin-bottom:1.1rem">
+          <div style="font-size:.72rem;color:var(--text);margin-bottom:.6rem;font-weight:bold">Accent Color</div>
+          <div class="color-pair">
+            <div class="color-row">
+              <label>Dark Mode</label>
+              <input type="color" id="accent-dark" value="#00c896" oninput="previewAccent()">
+            </div>
+            <div class="color-row">
+              <label>Light Mode</label>
+              <input type="color" id="accent-light" value="#009973" oninput="previewAccent()">
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-sm" style="width:auto" onclick="saveAppearanceSettings()">Save Appearance</button>
+          <button class="btn btn-sm btn-outline" style="width:auto" onclick="resetAppearance()">Reset to Defaults</button>
+        </div>
+      </div>
+
+      <!-- SYSTEM RESTART (renamed from ESP32 Reboot, moved before Danger Zone) -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">↺</div>
+          <div>
+            <div class="admin-box-title">System Restart</div>
+            <div class="admin-box-desc">Remotely restart the ESP32 microcontroller</div>
+          </div>
+        </div>
+        <div class="restart-card">
+          <div class="restart-icon">↺</div>
+          <div class="restart-desc">
+            Restarts the ESP32-S3. The device will be offline for ~5 seconds while it reboots.
+            All active sessions will reconnect automatically.
+          </div>
+          <button class="btn btn-sm btn-warn" style="flex-shrink:0" onclick="doReboot()">↺ Restart Now</button>
+        </div>
+      </div>
+
+      <!-- LIVE LOG REMOVED per requirements -->
+
+      <!-- DANGER ZONE -->
+      <div class="admin-box" style="margin-bottom:0">
+        <div class="danger-zone">
+          <h3>Danger Zone</h3>
+
+          <div class="danger-item">
+            <div>
+              <div class="di-title">Reset Class Data</div>
+              <div class="di-desc">Delete all attendance records for a class</div>
+            </div>
+            <div class="di-actions">
+              <div class="sel-wrap"><select id="reset-cls" style="width:110px"></select></div>
+              <button class="btn btn-sm btn-danger" onclick="doResetClass()">Reset</button>
+            </div>
+          </div>
+
+          <div class="danger-item">
+            <div>
+              <div class="di-title">Reset All Classes</div>
+              <div class="di-desc">Delete all attendance data for every class</div>
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="doResetAll()">Reset All</button>
+          </div>
+
+          <div class="danger-item">
+            <div>
+              <div class="di-title">Factory Reset</div>
+              <div class="di-desc">Wipe everything and re-seed defaults</div>
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="doFactoryReset()">Factory Reset</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /panel-advanced -->
+  </div>
+</div>
+
+
+<!-- Upload Progress Modal -->
+<div class="upload-modal-bg" id="upload-progress-modal">
+  <div class="upload-modal">
+    <div class="upload-ring"></div>
+    <div class="upload-label" id="upload-progress-label">Uploading…</div>
+    <div class="upload-sublabel" id="upload-progress-sub">Please wait, do not close this page</div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  var g_classes = [];
+
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('admin');
+    getSession().catch(function () { location.href = '/login.html'; });
+    loadClasses();
+    loadSchema();
+    loadSettings();
+    initAppearanceUI();
+  });
+
+  /* ── Panel switch (live log removed — no startLiveLog call) ── */
+  function switchPanel(name) {
+    document.getElementById('panel-basic').style.display    = name === 'basic'    ? 'block' : 'none';
+    document.getElementById('panel-advanced').style.display = name === 'advanced' ? 'block' : 'none';
+    document.getElementById('btn-basic').classList.toggle('active',    name === 'basic');
+    document.getElementById('btn-advanced').classList.toggle('active', name === 'advanced');
+  }
+
+  /* ── Classes ── */
+  function loadClasses() {
+    api('/api/classes').then(function (data) {
+      g_classes = data || [];
+      var html = g_classes.length
+        ? g_classes.map(function (c) {
+            var cn = typeof c === 'object' ? c.class_num : c;
+            return '<div class="row-item">' +
+              '<span class="ri-title">Class ' + cn + '</span>' +
+              '<button class="act-btn act-btn-del" onclick="delClass(' + cn + ')">✕ Delete</button></div>';
+          }).join('')
+        : '<div class="empty" style="padding:1rem 0">No classes yet.</div>';
+      document.getElementById('classes-list').innerHTML = html;
+
+      ['batch-cls','exp-cls','att-exp-cls','imp-cls','reset-cls'].forEach(function (id) {
+        var sel = document.getElementById(id);
+        if (!sel) return;
+        sel.innerHTML = g_classes.map(function (c) {
+          var cn = typeof c === 'object' ? c.class_num : c;
+          return '<option value="' + cn + '">Class ' + cn + '</option>';
+        }).join('');
+      });
+      loadBatches();
+    });
+  }
+
+  function addClass() {
+    var cn = parseInt(document.getElementById('new-class').value);
+    if (!cn || cn < 1) { showToast('Enter a valid class number', true); return; }
+    api('/api/classes/add', 'POST', { classnum: cn }).then(function () {
+      document.getElementById('new-class').value = '';
+      showToast('Class added'); loadClasses();
+    }).catch(function (e) { showToast(e.message, true); });
+  }
+
+  function delClass(cn) {
+    confirmAction('Delete Class ' + cn + '? All data will be lost.', function () {
+      api('/api/classes/delete?c=' + cn)
+        .then(function () { showToast('Deleted'); loadClasses(); })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  /* ── Batches — modern pill tag display ── */
+  function loadBatches() {
+    var sel = document.getElementById('batch-cls');
+    if (!sel || !sel.value) return;
+    api('/api/batches?c=' + sel.value).then(function (arr) {
+      var box = document.getElementById('batches-tag-list');
+      if (!box) return;
+      if (!(arr || []).length) {
+        box.innerHTML = '<span style="font-size:.72rem;color:var(--muted)">No batches yet for this class.</span>';
+        return;
+      }
+      box.innerHTML = arr.map(function (t) {
+        return '<span class="batch-tag">' +
+          '<span>' + esc(t) + '</span>' +
+          '<button class="batch-tag-del" title="Remove" onclick="delBatch(\'' + esc(t) + '\')">✕</button>' +
+          '</span>';
+      }).join('');
+    });
+  }
+
+  function addBatch() {
+    var cn = document.getElementById('batch-cls').value;
+    var t  = document.getElementById('new-batch').value;
+    if (!cn || !t) { showToast('Select class and enter a time', true); return; }
+    api('/api/batches/add', 'POST', { classnum: parseInt(cn), batch: t }).then(function () {
+      document.getElementById('new-batch').value = '';
+      showToast('Batch added'); loadBatches();
+    }).catch(function (e) { showToast(e.message, true); });
+  }
+
+  function delBatch(t) {
+    var cn = document.getElementById('batch-cls').value;
+    api('/api/batches/delete?c=' + cn + '&batch=' + encodeURIComponent(t))
+      .then(function () { showToast('Batch removed'); loadBatches(); })
+      .catch(function (e) { showToast(e.message, true); });
+  }
+
+  /* ── Settings ── */
+  function loadSettings() {
+    api('/api/admin/settings').then(function (data) {
+      if (data && data.min_att_pct != null) {
+        document.getElementById('min-att').value = data.min_att_pct;
+      }
+    }).catch(function () { /* non-fatal: field keeps its default */ });
+  }
+
+  function saveSettings() {
+    var pct = parseInt(document.getElementById('min-att').value);
+    api('/api/admin/settings', 'POST', { min_att_pct: pct })
+      .then(function () { showToast('Saved'); })
+      .catch(function (e) { showToast(e.message, true); });
+  }
+
+  /* ── Schema ── */
+  function loadSchema() {
+    api('/api/schema').then(function (s) {
+      renderSchemaList('student',    s.student    || [], 'sch-student-list');
+      renderSchemaList('attendance', s.attendance || [], 'sch-att-list');
+    });
+  }
+
+  function renderSchemaList(ctype, cols, containerId) {
+    document.getElementById(containerId).innerHTML = cols.length
+      ? cols.map(function (c) {
+          var isDefault = c['default'] || c.system;
+          return '<div class="row-item" style="padding:.55rem .75rem;gap:.6rem;align-items:center">' +
+            '<div style="display:flex;flex-direction:column;gap:.22rem;flex:1;min-width:0">' +
+              '<span style="font-size:.82rem;font-weight:bold">' + esc(c.label) + '</span>' +
+              '<span style="display:flex;gap:.35rem;align-items:center;flex-wrap:wrap">' +
+                '<span class="schema-badge" style="font-size:.62rem">' + esc(c.key) + '</span>' +
+                (isDefault ? '<span class="schema-badge sys" style="font-size:.6rem">system</span>' : '') +
+                (!isDefault ? '<span class="schema-badge' + (c.ask ? ' ask-on' : '') + '" style="font-size:.6rem">' +
+                  (c.ask ? '● visible' : '○ hidden') + '</span>' : '') +
+              '</span>' +
+            '</div>' +
+            '<div class="ri-right" style="flex-shrink:0;display:flex;gap:.35rem;align-items:center">' +
+              (!isDefault
+                ? '<button class="act-btn" style="font-size:.66rem" onclick="toggleAsk(\'' + ctype + '\',\'' + c.key + '\',' + (c.ask?0:1) + ')">' +
+                    (c.ask ? 'Hide' : 'Show') + '</button>' +
+                  '<button class="act-btn act-btn-del" style="font-size:.66rem" onclick="delCol(\'' + ctype + '\',\'' + c.key + '\')">✕</button>'
+                : '<span class="badge badge-grey" style="font-size:.58rem">protected</span>'
+              ) +
+            '</div></div>';
+        }).join('')
+      : '<div class="empty" style="padding:.75rem 0">No custom fields added yet.</div>';
+  }
+
+  function addSchemaCol(ctype) {
+    var pre   = ctype === 'student' ? 's' : 'a';
+    var key   = document.getElementById('sch-' + pre + '-key').value.trim().replace(/\s+/g,'_');
+    var label = document.getElementById('sch-' + pre + '-label').value.trim();
+    if (!key || !label) { showToast('Enter key and label', true); return; }
+    api('/api/schema/add', 'POST', { coltype: ctype, key: key, label: label, ask: 1 }).then(function () {
+      document.getElementById('sch-' + pre + '-key').value   = '';
+      document.getElementById('sch-' + pre + '-label').value = '';
+      showToast('Field added'); loadSchema();
+    }).catch(function (e) { showToast(e.message, true); });
+  }
+
+  function delCol(ctype, key) {
+    confirmAction('Delete custom field "' + key + '"? This cannot be undone.', function () {
+      api('/api/schema/delete?coltype=' + ctype + '&key=' + encodeURIComponent(key))
+        .then(function () { showToast('Field deleted'); loadSchema(); })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  function toggleAsk(ctype, key, newVal) {
+    api('/api/schema/toggle?coltype=' + ctype + '&key=' + encodeURIComponent(key) + '&flag=ask&val=' + newVal)
+      .then(function () { loadSchema(); })
+      .catch(function (e) { showToast(e.message, true); });
+  }
+
+  /* ── Data: Export ── */
+  function exportCsv(type) {
+    var cn = document.getElementById('exp-cls').value;
+    window.open('/api/admin/export-csv?c=' + cn + '&type=' + type, '_blank');
+  }
+  function exportAttCsv() {
+    var cn = document.getElementById('att-exp-cls').value;
+    window.open('/api/admin/export-csv?c=' + cn + '&type=attendance', '_blank');
+  }
+  function exportAttZipAll() {
+    window.open('/api/admin/export-all-zip', '_blank');
+  }
+
+  /* ── Import CSV — FIXED ──────────────────────────────────────────────
+     Old bug: used FormData/multipart which the ESP32 server cannot parse.
+              Server reads classnum+type from query params and body as raw CSV text.
+     Fix: read file as text, POST to ?classnum=X&type=Y with plain body.
+  ────────────────────────────────────────────────────────────────────── */
+  function showUploadProgress(label, sub) {
+    document.getElementById('upload-progress-label').textContent = label || 'Uploading…';
+    document.getElementById('upload-progress-sub').textContent   = sub   || 'Please wait, do not close this page';
+    document.getElementById('upload-progress-modal').classList.add('show');
+  }
+  function hideUploadProgress() {
+    document.getElementById('upload-progress-modal').classList.remove('show');
+  }
+
+  function importCsv() {
+    var file = document.getElementById('csv-file').files[0];
+    if (!file) return;
+    var cn   = document.getElementById('imp-cls').value;
+    var type = document.getElementById('imp-type').value;
+    if (!cn || !type) { showToast('Select class and type first', true); return; }
+
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var csvText = e.target.result;
+      var lineCount = (csvText.match(/\n/g) || []).length;
+      showUploadProgress(
+        'Importing ' + type + '…',
+        'Processing ~' + Math.max(0, lineCount - 1) + ' records'
+      );
+      fetch('/api/admin/import-csv?classnum=' + cn + '&type=' + type, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    csvText
+      })
+      .then(function (r) {
+        hideUploadProgress();
+        if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || 'Import failed'); });
+        return r.json();
+      })
+      .then(function (r) {
+        showToast('Imported: ' + (r.added||0) + ' added, ' + (r.skipped||0) + ' skipped');
+        document.getElementById('csv-file').value = '';
+      })
+      .catch(function (e) { hideUploadProgress(); showToast(e.message, true); });
+    };
+    reader.readAsText(file);
+  }
+
+  function importAttZip() {
+    var file = document.getElementById('att-zip-file').files[0];
+    if (!file) return;
+
+    /* Use the import class selector; fall back to export selector if absent */
+    var cn = (document.getElementById('imp-cls') || {}).value ||
+             (document.getElementById('att-exp-cls') || {}).value || '';
+
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      var csvText = e.target.result;
+      var lineCount = (csvText.match(/\n/g) || []).length;
+      showUploadProgress(
+        'Importing attendance…',
+        'Processing ~' + Math.max(0, lineCount - 1) + ' records'
+      );
+      var url = '/api/admin/import-attendance-zip' + (cn ? '?classnum=' + cn : '');
+      fetch(url, {
+        method:  'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body:    csvText
+      })
+      .then(function (r) {
+        hideUploadProgress();
+        if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || 'Import failed'); });
+        return r.json();
+      })
+      .then(function (r) {
+        showToast('Imported: ' + (r.added||0) + ' added, ' + (r.skipped||0) + ' skipped');
+        document.getElementById('att-zip-file').value = '';
+      })
+      .catch(function (e) { hideUploadProgress(); showToast(e.message, true); });
+    };
+    reader.readAsText(file);
+  }
+
+  function doBackup() {
+    api('/api/admin/backup-now')
+      .then(function () { showToast('Backup done'); })
+      .catch(function (e) { showToast(e.message, true); });
+  }
+
+  /* ── System Restart (was ESP32 Reboot) ── */
+  function doReboot() {
+    confirmAction('Restart the ESP32-S3? The device will be offline for ~5 seconds.', function () {
+      api('/api/admin/reboot', 'POST', {}).then(function () {
+        showToast('Restarting ESP32-S3…');
+      }).catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  /* ── Appearance — font as dropdown ── */
+  function initAppearanceUI() {
+    var cfg     = getAppearance();
+    var sel     = document.getElementById('font-select');
+    var curFont = cfg.font || 'jetbrains';
+
+    /* Build font dropdown options */
+    Object.keys(FONTS).forEach(function (key) {
+      var f   = FONTS[key];
+      var opt = document.createElement('option');
+      opt.value       = key;
+      opt.textContent = f.name;
+      opt.selected    = (key === curFont);
+      sel.appendChild(opt);
+    });
+
+    if (cfg.fontSize) {
+      document.getElementById('font-size-range').value = cfg.fontSize;
+      document.getElementById('font-size-val').textContent = cfg.fontSize + 'px';
+    }
+    if (cfg.accentDark)  document.getElementById('accent-dark').value  = cfg.accentDark;
+    if (cfg.accentLight) document.getElementById('accent-light').value = cfg.accentLight;
+  }
+
+  function previewFont(key) {
+    if (FONTS[key]) document.documentElement.style.setProperty('--font', FONTS[key].stack);
+  }
+
+  function previewFontSize(v) {
+    document.getElementById('font-size-val').textContent = v + 'px';
+    document.documentElement.style.setProperty('--font-size-base', v + 'px');
+  }
+
+  function previewAccent() {
+    var isDark = !document.body.classList.contains('light');
+    var col = isDark
+      ? document.getElementById('accent-dark').value
+      : document.getElementById('accent-light').value;
+    document.documentElement.style.setProperty('--accent', col);
+  }
+
+  function saveAppearanceSettings() {
+    var fontKey  = document.getElementById('font-select').value;
+    var fontSize = document.getElementById('font-size-range').value;
+    var cfg = {
+      font:        fontKey,
+      fontSize:    parseInt(fontSize),
+      accentDark:  document.getElementById('accent-dark').value,
+      accentLight: document.getElementById('accent-light').value
+    };
+    saveAppearance(cfg);
+    showToast('Appearance saved');
+  }
+
+  function resetAppearance() {
+    localStorage.removeItem('att_appearance');
+    location.reload();
+  }
+
+  /* ── Danger zone ── */
+  function doResetClass() {
+    var cn = document.getElementById('reset-cls').value;
+    confirmAction('Reset ALL attendance for Class ' + cn + '? This cannot be undone.', function () {
+      api('/api/admin/reset-class', 'POST', { classnum: parseInt(cn) })
+        .then(function () { showToast('Class reset'); })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+  function doResetAll() {
+    confirmAction('Reset ALL attendance data for every class? This cannot be undone.', function () {
+      api('/api/admin/reset-all')
+        .then(function () { showToast('All reset'); })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+  function doFactoryReset() {
+    confirmAction('FACTORY RESET: wipe everything and re-seed defaults?', function () {
+      api('/api/admin/factory-reset', 'POST', {}).then(function () {
+        showToast('Factory reset done — reloading…');
+        setTimeout(function () { location.href = '/login.html'; }, 2000);
+      }).catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  function esc(v) {
+    return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+</script>
+</body>
+</html>

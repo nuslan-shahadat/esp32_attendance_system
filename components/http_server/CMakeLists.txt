@@ -1,0 +1,23 @@
+idf_component_register(
+    SRCS
+        "http_server.c"
+        "static_files.c"
+        "api_auth.c"
+        "api_classes.c"
+        "api_students.c"
+        "api_attendance.c"
+        "api_admin.c"
+        "api_wifi.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        esp_http_server
+        spiffs
+        auth
+        db
+        wifi_mgr
+        hid_rfid
+        json
+        esp_wifi
+        freertos
+)

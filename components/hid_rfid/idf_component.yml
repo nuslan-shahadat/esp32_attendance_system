@@ -1,0 +1,14 @@
+## IDF Component Manager manifest for hid_rfid
+##
+## usb/hid_host.h and usb/hid_usage_keyboard.h are NOT part of the built-in
+## ESP-IDF "usb" component.  They live in the "usb_host_hid" class-driver
+## managed component published by Espressif on the component registry.
+##
+## PlatformIO with framework = espidf will invoke idf-component-manager
+## automatically and download this package into managed_components/.
+##
+## Registry page:
+##   https://components.espressif.com/components/espressif/usb_host_hid
+
+dependencies:
+  espressif/usb_host_hid: ">=1.0.0"

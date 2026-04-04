@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Select Class — R@sel's Math Home</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 720px; }
+    .page-title {
+      font-size: .7rem;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+    }
+    .page-title::before { content: '▶'; font-size: .5rem; color: var(--accent); }
+    .class-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .class-card {
+      background: var(--stat-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0;
+      cursor: pointer;
+      font-family: var(--font);
+      text-align: left;
+      transition: border-color .2s, box-shadow .2s, transform .14s;
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+    }
+    .class-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity .2s;
+    }
+    .class-card:hover { border-color: var(--accent); box-shadow: 0 4px 20px rgba(0,200,150,.12); transform: translateY(-2px); }
+    .class-card:hover::before { opacity: 1; }
+    .class-card:active { transform: translateY(0); }
+    .cc-top { padding: 1.1rem 1.25rem .9rem; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; }
+    .cc-num { font-size: 1.9rem; font-weight: bold; color: var(--text); line-height: 1; letter-spacing: -.02em; }
+    .cc-label { font-size: .55rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); margin-bottom: .2rem; }
+    .cc-student-count { font-size: .68rem; color: var(--muted); margin-top: .3rem; letter-spacing: .03em; }
+    .cc-stats-placeholder { padding: .7rem 1.25rem; display: flex; align-items: center; gap: .5rem; }
+    .cc-badge { background: rgba(0,200,150,.1); border: 1px solid rgba(0,200,150,.22); color: var(--accent); border-radius: 3px; padding: .18rem .5rem; font-size: .6rem; letter-spacing: .1em; text-transform: uppercase; }
+    .cc-stats { padding: .7rem 1.25rem; display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; }
+    .cc-stat { display: flex; flex-direction: column; gap: .22rem; }
+    .cc-stat-val { font-size: 1.1rem; font-weight: bold; line-height: 1; letter-spacing: .02em; }
+    .cc-stat-lbl { font-size: .55rem; color: var(--muted); letter-spacing: .1em; text-transform: uppercase; }
+    .sv-total   { color: var(--text); }
+    .sv-present { color: var(--accent); }
+    .sv-absent  { color: var(--danger); }
+    .cc-progress { padding: 0 1.25rem .9rem; }
+    .cc-prog-bar { width: 100%; height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .cc-prog-fill { height: 100%; border-radius: 2px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+    .fill-green { background: var(--accent); }
+    .fill-warn  { background: var(--warn); }
+    .fill-red   { background: var(--danger); }
+    .cc-footer { padding: .55rem 1.25rem; border-top: 1px solid var(--border); background: var(--stat-bg); display: flex; align-items: center; justify-content: space-between; font-size: .62rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+    .cc-arrow { color: var(--accent); opacity: .7; font-size: .75rem; }
+    #loading { text-align: center; color: var(--muted); font-size: .82rem; padding: 3rem 0; }
+    .no-class { text-align: center; color: var(--dim); font-size: .8rem; padding: 3rem 0; letter-spacing: .07em; }
+    @media (max-width: 480px) {
+      .class-grid { grid-template-columns: 1fr 1fr; gap: .65rem; }
+      .cc-top { padding: .85rem 1rem .7rem; }
+      .cc-num { font-size: 1.5rem; }
+      .cc-stats { padding: .7rem 1rem; }
+      .cc-progress { padding: 0 1rem .75rem; }
+      .cc-footer { padding: .45rem 1rem; }
+    }
+    @media (max-width: 340px) { .class-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/select-class.html" class="nb-brand"></a>
+  <div class="nb-right">
+    <div class="nb-cls-sel">
+      <select id="nb-cls-select"></select>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+    <div class="theme-switch">
+      <span class="ts-icon" id="ts-icon">☀</span>
+      <div class="ts-track" id="ts-track" onclick="toggleTheme()"><div class="ts-thumb"></div></div>
+    </div>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<div class="page-wrap">
+  <div class="page-title">Select Class</div>
+  <div id="loading"><span class="spinner"></span></div>
+  <div class="class-grid" id="class-grid" style="display:none"></div>
+  <div class="no-class" id="no-class" style="display:none">
+    No classes configured.<br>Go to Admin → Class Management to add classes.
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('classes');
+    getSession().catch(function () { location.href = '/login.html'; });
+
+    api('/api/classes').then(function (data) {
+      document.getElementById('loading').style.display = 'none';
+      var grid = document.getElementById('class-grid');
+      if (!data || !data.length) {
+        document.getElementById('no-class').style.display = 'block';
+        return;
+      }
+      grid.style.display = 'grid';
+      var today = new Date().toISOString().slice(0,10);
+      var summaryQueue = [];
+
+      data.forEach(function (cls) {
+        var cn    = typeof cls === 'object' ? cls.class_num : cls;
+        var total = typeof cls === 'object' && cls.student_count != null ? cls.student_count : null;
+        var card  = document.createElement('button');
+        card.className = 'class-card';
+        card.innerHTML = renderCard(cn, total, null, null);
+        card.addEventListener('click', function () {
+          api('/api/set-class?c=' + cn).then(function () {
+            location.href = '/attendance.html';
+          }).catch(function (e) { showToast(e.message, true); });
+        });
+        grid.appendChild(card);
+        summaryQueue.push({ cn: cn, total: total, card: card });
+      });
+
+      /* Fetch summaries one-at-a-time so the ESP32 httpd queue is never saturated */
+      function fetchNextSummary(i) {
+        if (i >= summaryQueue.length) return;
+        var item = summaryQueue[i];
+        api('/api/attendance/summary?c=' + item.cn + '&date=' + today)
+          .then(function (stats) {
+            var present = stats.present != null ? stats.present : 0;
+            var absent  = stats.absent  != null ? stats.absent  : 0;
+            var t       = item.total != null ? item.total : (present + absent);
+            item.card.innerHTML = renderCard(item.cn, t, present, absent);
+          })
+          .catch(function () {})
+          .then(function () { fetchNextSummary(i + 1); });
+      }
+      fetchNextSummary(0);
+    }).catch(function (e) {
+      document.getElementById('loading').style.display = 'none';
+      showToast(e.message, true);
+    });
+  });
+
+  function renderCard(cn, total, present, absent) {
+    var hasStats  = present !== null && absent !== null;
+    var pct       = (hasStats && total > 0) ? Math.round((present / total) * 100) : 0;
+    var fillClass = pct >= 75 ? 'fill-green' : pct >= 50 ? 'fill-warn' : 'fill-red';
+    var today     = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short' });
+    var studentStr = total !== null ? total + ' student' + (total !== 1 ? 's' : '') + ' registered' : 'Loading…';
+    return (
+      '<div class="cc-top">' +
+        '<div>' +
+          '<div class="cc-label">Class</div>' +
+          '<span class="cc-num">' + cn + '</span>' +
+          '<div class="cc-student-count">' + studentStr + '</div>' +
+        '</div>' +
+        '<span class="cc-badge">→</span>' +
+      '</div>' +
+      (hasStats
+        ? '<div class="cc-stats">' +
+            '<div class="cc-stat"><span class="cc-stat-val sv-present">' + present + '</span><span class="cc-stat-lbl">Present</span></div>' +
+            '<div class="cc-stat"><span class="cc-stat-val sv-absent">'  + absent  + '</span><span class="cc-stat-lbl">Absent</span></div>' +
+          '</div>' +
+          '<div class="cc-progress"><div class="cc-prog-bar"><div class="cc-prog-fill ' + fillClass + '" style="width:' + pct + '%"></div></div></div>'
+        : '<div class="cc-stats-placeholder"><span class="spinner" style="width:14px;height:14px;border-width:2px"></span></div>'
+      ) +
+      '<div class="cc-footer"><span>Today · ' + today + '</span></div>'
+    );
+  }
+</script>
+</body>
+</html>

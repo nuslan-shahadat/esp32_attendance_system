@@ -1,0 +1,35 @@
+# Wi-Fi
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=32
+CONFIG_ESP_WIFI_TX_BUFFER_TYPE_STATIC=n
+
+# SPIFFS
+CONFIG_SPIFFS_MAX_PARTITIONS=1
+CONFIG_SPIFFS_OBJ_NAME_LEN=64
+CONFIG_SPIFFS_USE_MAGIC=y
+
+# HTTP server — increase for large HTML file transfers
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+CONFIG_HTTPD_WS_SUPPORT=n
+CONFIG_HTTPD_MAX_RESP_HDR_LEN=512
+
+# Logging
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# USB (for RFID HID host)
+CONFIG_USB_HOST_CONTROL_TRANSFER_MAX_SIZE=256
+CONFIG_USB_OTG_SUPPORTED=y
+
+# Stack sizes
+CONFIG_MAIN_TASK_STACK_SIZE=8192
+
+# SNTP — slot count must match usage in db_sntp_sync()
+# Keep at 1 (only pool.ntp.org). Raise to 2 if you re-add a fallback server.
+CONFIG_LWIP_SNTP_MAX_SERVERS=1
+
+# FAT Long File Name support — REQUIRED for "attendance.db" (10-char base name > 8.3 limit)
+CONFIG_FATFS_LFN_HEAP=y
+
+# Flash size — matches partition table layout and suppresses boot warning
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y

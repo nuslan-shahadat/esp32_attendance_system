@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Role Select — Attendance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 480px; }
+    .role-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem; }
+    .role-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2rem 1.25rem;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color .2s, box-shadow .2s, transform .15s;
+      display: flex; flex-direction: column; align-items: center; gap: .75rem;
+    }
+    .role-card:hover { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,200,150,.1); transform: translateY(-2px); }
+    .role-card .rc-ic { font-size: 1.8rem; }
+    .role-card .rc-title { font-size: .82rem; font-weight: bold; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+    .role-card .rc-desc  { font-size: .67rem; color: var(--muted); letter-spacing: .07em; line-height: 1.5; }
+    .role-card.admin-card { border-color: rgba(224,92,92,.25); }
+    .role-card.admin-card:hover { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(224,92,92,.1); }
+    .role-card.admin-card .rc-title { color: var(--danger); }
+    @media (max-width: 420px) { .role-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/role-select.html" class="nb-brand">Attendance</a>
+  <div class="nb-right">
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<div class="page-wrap">
+  <div class="card">
+    <h2>Select Role</h2>
+    <div class="role-grid">
+      <div class="role-card" onclick="location.href='/select-class.html'">
+        <div class="rc-ic">✓</div>
+        <div class="rc-title">Teacher</div>
+        <div class="rc-desc">Mark attendance &amp; view student records</div>
+      </div>
+      <div class="role-card admin-card" onclick="location.href='/admin.html'">
+        <div class="rc-ic">⚙</div>
+        <div class="rc-title">Admin</div>
+        <div class="rc-desc">Manage classes, schema &amp; system settings</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    getSession().catch(function () { location.href = '/login.html'; });
+    buildNavbar('home');
+  });
+</script>
+</body>
+</html>

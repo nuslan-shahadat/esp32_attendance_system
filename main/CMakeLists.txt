@@ -1,0 +1,20 @@
+idf_component_register(
+    SRCS
+        "main.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        auth
+        db
+        wifi_mgr
+        hid_rfid
+        http_server
+        esp_wifi
+        nvs_flash
+        spiffs
+        esp_http_server
+        fatfs
+        wear_levelling
+        driver
+        usb
+)
