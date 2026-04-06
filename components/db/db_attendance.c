@@ -180,7 +180,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
     }
 
     /* Close today array and open log array */
-    if (ret == ESP_OK) ret = cb("],\"log\":[", 8, ctx);
+    if (ret == ESP_OK) ret = cb("],\"log\":[", 9, ctx);
 
     /* ── Log tab (grouped by date) — also streamed per date group ── */
     if (ret == ESP_OK) {
