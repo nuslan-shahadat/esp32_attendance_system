@@ -399,6 +399,7 @@ function loadData() {
 
     const groupEl = document.createElement('div');
     groupEl.className = 'date-group collapsed';
+    groupEl.dataset.gi = '1'; // prevent initGroups() from adding a duplicate click handler
     groupEl.innerHTML = 
       `<div class="date-group-hdr">` +
         `<span class="dg-date">${esc(date)}${date===todayStr ? ` <span class="today-tag">Today</span>` : ''}</span>` +
