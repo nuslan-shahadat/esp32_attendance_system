@@ -9,11 +9,7 @@
     .page-wrap { width: 100%; max-width: 1080px; }
     .subtitle { font-size:.66rem; color:var(--dim); font-weight:normal; letter-spacing:.06em; text-transform:none; }
 
-    .scan-status-bar {
-      display:none; align-items:center; gap:.55rem; flex-wrap:wrap;
-      padding:.65rem .8rem; margin-bottom:1.1rem;
-      border:1px solid var(--border); border-radius:4px; background:var(--stat-bg); font-size:.72rem;
-    }
+    .scan-status-bar { display:none; align-items:center; gap:.55rem; flex-wrap:wrap; padding:.65rem .8rem; margin-bottom:1.1rem; border:1px solid var(--border); border-radius:4px; background:var(--stat-bg); font-size:.72rem; }
     .scan-dot { width:9px; height:9px; border-radius:50%; background:var(--dim); transition:transform .15s,box-shadow .2s,background .2s; }
     .scan-dot.connected { background:var(--accent); }
     .scan-dot.scanning  { background:var(--accent); box-shadow:0 0 0 6px rgba(0,200,150,.12); transform:scale(1.05); }
@@ -22,40 +18,19 @@
     .scan-event.err { color:var(--danger); }
 
     .tab-shell { margin-bottom:1rem; }
-    .tab-bar {
-      position:relative; display:inline-flex;
-      background:var(--stat-bg); border:1px solid var(--border); border-radius:5px;
-      padding:3px; margin-bottom:1rem; overflow:hidden; width:100%; max-width:360px;
-    }
-    .tab-bar .tab-pill {
-      position:absolute; top:3px; bottom:3px; left:3px;
-      background:var(--accent); border-radius:3px;
-      transition:left .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1); z-index:0;
-    }
-    .tab-bar button {
-      position:relative; z-index:1; flex:1; background:none; border:none; border-radius:3px;
-      padding:.38rem .9rem; font-family:'Courier New',Courier,monospace; font-size:.72rem;
-      letter-spacing:.1em; text-transform:uppercase; cursor:pointer; color:var(--muted);
-      transition:color .18s; white-space:nowrap;
-    }
+    .tab-bar { position:relative; display:inline-flex; background:var(--stat-bg); border:1px solid var(--border); border-radius:5px; padding:3px; margin-bottom:1rem; overflow:hidden; width:100%; max-width:360px; }
+    .tab-bar .tab-pill { position:absolute; top:3px; bottom:3px; left:3px; background:var(--accent); border-radius:3px; transition:left .22s cubic-bezier(.4,0,.2,1),width .22s cubic-bezier(.4,0,.2,1); z-index:0; }
+    .tab-bar button { position:relative; z-index:1; flex:1; background:none; border:none; border-radius:3px; padding:.38rem .9rem; font-family:'Courier New',Courier,monospace; font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; color:var(--muted); transition:color .18s; white-space:nowrap; }
     .tab-bar button.active { color:#0f1117; font-weight:bold; }
 
     .filter-bar { display:flex; gap:.4rem; margin-bottom:1rem; flex-wrap:wrap; }
-    .ftab {
-      background:none; border:1px solid var(--border); border-radius:3px; padding:.28rem .72rem;
-      font-family:'Courier New',Courier,monospace; font-size:.68rem; letter-spacing:.09em;
-      text-transform:uppercase; cursor:pointer; color:var(--muted); text-decoration:none;
-      transition:all .14s; white-space:nowrap;
-    }
+    .ftab { background:none; border:1px solid var(--border); border-radius:3px; padding:.28rem .72rem; font-family:'Courier New',Courier,monospace; font-size:.68rem; letter-spacing:.09em; text-transform:uppercase; cursor:pointer; color:var(--muted); text-decoration:none; transition:all .14s; white-space:nowrap; }
     .ftab:hover { border-color:var(--accent); color:var(--accent); }
     .ftab.active-all,.ftab.active-present,.ftab.active-absent { color:var(--text); border-color:var(--muted); }
 
     .toolbar { display:flex; gap:.65rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap; }
     .toolbar .search-wrap { position:relative; flex:1; min-width:160px; margin-bottom:0; }
-    .toolbar .search-wrap::before {
-      content:'🔍'; position:absolute; left:.7rem; top:50%; transform:translateY(-50%);
-      font-size:.8rem; opacity:.4; pointer-events:none;
-    }
+    .toolbar .search-wrap::before { content:'🔍'; position:absolute; left:.7rem; top:50%; transform:translateY(-50%); font-size:.8rem; opacity:.4; pointer-events:none; }
     .toolbar input[type="text"] { padding-left:1.9rem; width:100%; }
 
     .today-table-wrap { overflow:hidden; border:1px solid var(--border); border-radius:4px; margin-bottom:.9rem; }
@@ -67,11 +42,7 @@
     .status-absent  { color:var(--danger); font-size:.72rem; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; }
 
     .date-group { margin-bottom:1.15rem; }
-    .date-group-hdr {
-      display:flex; align-items:center; gap:.75rem; padding:.5rem .75rem;
-      background:var(--stat-bg); border:1px solid var(--border); border-radius:4px 4px 0 0;
-      cursor:pointer; user-select:none;
-    }
+    .date-group-hdr { display:flex; align-items:center; gap:.75rem; padding:.5rem .75rem; background:var(--stat-bg); border:1px solid var(--border); border-radius:4px 4px 0 0; cursor:pointer; user-select:none; }
     .date-group-hdr .dg-date { font-size:.78rem; color:var(--accent); letter-spacing:.1em; font-weight:bold; }
     .date-group-hdr .dg-cnt  { font-size:.68rem; color:var(--muted); margin-left:auto; background:var(--badge-bg); border:1px solid var(--border); border-radius:3px; padding:.1rem .4rem; }
     .date-group-hdr .dg-arr  { color:var(--muted); font-size:.7rem; transition:transform .2s; flex-shrink:0; }
@@ -80,10 +51,7 @@
     .date-group.collapsed .date-group-body { display:none; }
     .date-group.collapsed .date-group-hdr { border-radius:4px; }
 
-    .empty-note {
-      color:var(--muted); font-size:.76rem; text-align:center;
-      padding:1rem .75rem; border:1px dashed var(--border); border-radius:4px; background:var(--stat-bg);
-    }
+    .empty-note { color:var(--muted); font-size:.76rem; text-align:center; padding:1rem .75rem; border:1px dashed var(--border); border-radius:4px; background:var(--stat-bg); }
 
     @media (max-width:580px) {
       .tab-bar { max-width:100%; }
@@ -158,9 +126,7 @@
       </div>
       <div class="today-table-wrap">
         <table>
-          <thead>
-            <tr><th class="num-col">#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Status</th><th>Time</th><th></th></tr>
-          </thead>
+          <thead><tr><th class="num-col">#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Status</th><th>Time</th><th></th></tr></thead>
           <tbody id="today-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -180,20 +146,13 @@
 
 <script src="/app.js"></script>
 <script>
-  /* ===============================================
-     ATTENDANCE PAGE - FULLY CLEANED & OPTIMIZED
-     Matches students.html streaming pattern exactly
-     =============================================== */
-
-  let g_class       = 0;
-  let g_todayRows   = [];
+  let g_class = 0;
+  let g_todayRows = [];
   let g_todayFilter = 'all';
-  let g_loadGen     = 0;
+  let g_loadGen = 0;
 
   function pad2(n) { return String(n).padStart(2, '0'); }
-  function localDateStr(d) {
-    return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
-  }
+  function localDateStr(d) { return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
   function getTodayName() { return localDateStr(new Date()); }
 
   function esc(v) {
@@ -233,37 +192,17 @@
   }
 
   function buildTodayRow(r, rowNum) {
-    const statusHtml = r.status === 'present'
-      ? `<span class="status-present">● Present</span>`
-      : `<span class="status-absent">● Absent</span>`;
-
-    const nameLink = r.uid
-      ? `<a href="/student-detail.html?uid=${encodeURIComponent(r.uid)}" style="color:var(--text);text-decoration:none">${esc(r.name || '—')}</a>`
-      : esc(r.name || '—');
-
-    const actionCell = (r.uid && r.status === 'absent')
-      ? `<td><button class="btn-sm btn btn-outline ajax-mark-btn" style="padding:.18rem .5rem;font-size:.62rem" data-uid="${esc(r.uid)}">+ Mark</button></td>`
-      : '<td></td>';
+    const statusHtml = r.status === 'present' ? `<span class="status-present">● Present</span>` : `<span class="status-absent">● Absent</span>`;
+    const nameLink = r.uid ? `<a href="/student-detail.html?uid=${encodeURIComponent(r.uid)}" style="color:var(--text);text-decoration:none">${esc(r.name || '—')}</a>` : esc(r.name || '—');
+    const actionCell = (r.uid && r.status === 'absent') ? `<td><button class="btn-sm btn btn-outline ajax-mark-btn" style="padding:.18rem .5rem;font-size:.62rem" data-uid="${esc(r.uid)}">+ Mark</button></td>` : '<td></td>';
 
     const tr = document.createElement('tr');
     tr.className = 'clickable';
-    if (r.uid) {
-      tr.addEventListener('click', e => {
-        if (!e.target.closest('a') && !e.target.closest('button')) {
-          location.href = `/student-detail.html?uid=${encodeURIComponent(r.uid)}`;
-        }
-      });
-    }
+    if (r.uid) tr.addEventListener('click', e => {
+      if (!e.target.closest('a') && !e.target.closest('button')) location.href = `/student-detail.html?uid=${encodeURIComponent(r.uid)}`;
+    });
 
-    tr.innerHTML =
-      `<td class="num-col">${rowNum}</td>` +
-      `<td>${nameLink}</td>` +
-      `<td><span class="badge badge-grey">${esc(r.roll || '—')}</span></td>` +
-      `<td><span class="badge badge-green" style="font-size:.64rem">${esc(r.uid || '—')}</span></td>` +
-      `<td><span style="color:var(--muted);font-size:.82rem">${esc(r.batch || '—')}</span></td>` +
-      `<td>${statusHtml}</td>` +
-      `<td>${r.time ? `<span style="color:var(--text);font-size:.83rem">${esc(r.time)}</span>` : `<span style="color:var(--dim);font-size:.78rem">—</span>`}</td>` +
-      actionCell;
+    tr.innerHTML = `<td class="num-col">${rowNum}</td><td>${nameLink}</td><td><span class="badge badge-grey">${esc(r.roll || '—')}</span></td><td><span class="badge badge-green" style="font-size:.64rem">${esc(r.uid || '—')}</span></td><td><span style="color:var(--muted);font-size:.82rem">${esc(r.batch || '—')}</span></td><td>${statusHtml}</td><td>${r.time ? `<span style="color:var(--text);font-size:.83rem">${esc(r.time)}</span>` : `<span style="color:var(--dim);font-size:.78rem">—</span>`}</td>` + actionCell;
 
     if (r.uid && r.status === 'absent') {
       const btn = tr.querySelector('.ajax-mark-btn');
@@ -279,12 +218,10 @@
       if (!q) return true;
       return [r.name, r.roll, r.uid, r.batch, r.time].some(v => String(v||'').toLowerCase().includes(q));
     });
-
     rows.sort((a,b) => a.status !== b.status ? (a.status==='present' ? -1 : 1) : String(a.name||'').localeCompare(String(b.name||'')));
 
     const tbody = document.getElementById('today-tbody');
     tbody.innerHTML = '';
-
     if (!rows.length) {
       tbody.innerHTML = `<tr><td colspan="7" class="empty">No results</td></tr>`;
       return;
@@ -292,56 +229,58 @@
     rows.forEach((r, i) => tbody.appendChild(buildTodayRow(r, i+1)));
   }
 
-  function loadData() {
-    const gen = ++g_loadGen;
-    const tbody = document.getElementById('today-tbody');
-    const logBox = document.getElementById('log-groups');
+function loadData() {
+  const gen = ++g_loadGen;
+  const tbody = document.getElementById('today-tbody');
+  const logBox = document.getElementById('log-groups');
 
-    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
-    if (logBox) logBox.innerHTML = '<div class="empty-note">Loading…</div>';
+  tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+  if (logBox) logBox.innerHTML = '<div class="empty-note">Loading Full Log…</div>';
 
-    g_todayRows = [];
-    let firstLogGroup = true;
+  g_todayRows = [];
+  let firstLogGroup = true;
 
-    apiStreamAttendance(
-      `/api/attendance?c=${g_class}`,
+  apiStreamAttendance(
+    `/api/attendance?c=${g_class}`,
 
-      header => { if (gen === g_loadGen) renderStats(header.stats?.total||0, header.stats?.present||0, header.stats?.absent||0); },
+    header => { if (gen === g_loadGen) renderStats(header.stats?.total||0, header.stats?.present||0, header.stats?.absent||0); },
 
-      item => {
-        if (gen !== g_loadGen) return;
-        const r = normalizeTodayItem(item);
-        g_todayRows.push(r);
-        if (g_todayRows.length === 1 && tbody) tbody.innerHTML = '';
-        if (tbody) tbody.appendChild(buildTodayRow(r, g_todayRows.length));
-      },
+    item => {
+      if (gen !== g_loadGen) return;
+      const r = normalizeTodayItem(item);
+      g_todayRows.push(r);
+      if (g_todayRows.length === 1 && tbody) tbody.innerHTML = '';
+      if (tbody) tbody.appendChild(buildTodayRow(r, g_todayRows.length));
+    },
 
-      group => {
-        if (gen !== g_loadGen) return;
-        if (firstLogGroup) { if (logBox) logBox.innerHTML = ''; firstLogGroup = false; }
-        appendLogGroup(group);
-      },
-
-      () => {
-        if (gen !== g_loadGen) return;
-        if (g_todayRows.length === 0 && tbody) {
-          tbody.innerHTML = `<tr><td colspan="7" class="empty">No students found.</td></tr>`;
-        } else {
-          filterToday();
-        }
-        if (firstLogGroup && logBox) logBox.innerHTML = `<div class="empty-note">No attendance records yet.</div>`;
-      },
-
-      err => {
-        if (gen !== g_loadGen) return;
-        const msg = esc(err.message || 'Unknown error');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty">Error: ${msg}</td></tr>`;
-        if (logBox) logBox.innerHTML = `<div class="empty-note">Error: ${msg}</div>`;
+    group => {
+      if (gen !== g_loadGen) return;
+      if (firstLogGroup) {
+        if (logBox) logBox.innerHTML = '';
+        firstLogGroup = false;
       }
-    );
-  }
+      appendLogGroup(group);
+    },
 
-  /* ==================== RFID & Other Functions ==================== */
+    () => {
+      if (gen !== g_loadGen) return;
+      if (g_todayRows.length === 0 && tbody) {
+        tbody.innerHTML = `<tr><td colspan="7" class="empty">No students found.</td></tr>`;
+      }
+      // Make sure all date groups are expandable
+      initGroups();
+    },
+
+    err => {
+      if (gen !== g_loadGen) return;
+      const msg = esc(err.message || 'Unknown error');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty">Error: ${msg}</td></tr>`;
+      if (logBox) logBox.innerHTML = `<div class="empty-note">Error: ${msg}</div>`;
+    }
+  );
+}
+
+  /* ==================== RFID, Mark, Delete, Log functions ==================== */
   function startRFIDPoll() {
     const dot = document.getElementById('scan-dot');
     const label = document.getElementById('scan-label');
@@ -435,11 +374,12 @@
   function appendLogGroup(group) {
     const container = document.getElementById('log-groups');
     if (!container) return;
+
     const date = group.date || getTodayName();
     const records = (group.records || []).map(rec => normalizeLogRecord(rec, date));
     records.sort((a,b) => String(b.time||'').localeCompare(String(a.time||'')));
 
-    const today = getTodayName();
+    const todayStr = getTodayName();
     const pCnt = records.filter(r => (r.status||'present')==='present').length;
     const aCnt = records.filter(r => r.status==='absent').length;
 
@@ -461,7 +401,7 @@
     groupEl.className = 'date-group collapsed';
     groupEl.innerHTML = 
       `<div class="date-group-hdr">` +
-        `<span class="dg-date">${esc(date)}${date===today ? ` <span class="today-tag">Today</span>` : ''}</span>` +
+        `<span class="dg-date">${esc(date)}${date===todayStr ? ` <span class="today-tag">Today</span>` : ''}</span>` +
         (pCnt ? `<span style="font-size:.66rem;color:var(--accent);margin-left:.4rem">&#9679; ${pCnt}P</span>` : '') +
         (aCnt ? `<span style="font-size:.66rem;color:var(--danger);margin-left:.3rem">&#9679; ${aCnt}A</span>` : '') +
         `<span class="dg-cnt">${records.length} record${records.length===1?'':'s'}</span>` +
@@ -469,9 +409,11 @@
       `</div>` +
       `<div class="date-group-body"><table><thead><tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th><th></th></tr></thead><tbody>${tbodyHtml}</tbody></table></div>`;
 
+    // Wire collapse
     const hdr = groupEl.querySelector('.date-group-hdr');
     if (hdr) hdr.addEventListener('click', () => groupEl.classList.toggle('collapsed'));
 
+    // Wire delete buttons
     groupEl.querySelectorAll('.ajax-del-btn').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();

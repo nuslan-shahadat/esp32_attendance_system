@@ -301,110 +301,45 @@ window.createSSE = function (url, onMessage, onError) {
   };
 };
 
-// ── Streaming helpers ───────────────────────────────────────────────
-/* ── apiStream — flat JSON array streaming ─── */
-window.apiStream = function (url, onItem, onDone, onError) {
+/* ── apiStreamAttendance — FIXED & ROBUST nested attendance streaming ─── */
+window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogGroup, onDone, onError) {
   fetch(url, { headers: { 'Content-Type': 'application/json' } })
     .then(function (r) {
       if (r.status === 401) { window.location.href = '/login.html'; return; }
       if (r.status === 403) { window.location.href = '/select-class.html'; return; }
       if (!r.ok) {
-        r.json().catch(function () { return {}; }).then(function (j) {
-          onError(new Error(j.error || 'HTTP ' + r.status));
-        });
+        r.json().catch(() => {}).then(j => onError(new Error(j.error || 'HTTP ' + r.status)));
         return;
       }
 
-      var reader   = r.body.getReader();
-      var dec      = new TextDecoder();
-      var buf      = '';
-      var pos      = 0;
-      var depth    = 0;
-      var objStart = -1;
-      var inStr    = false;
-      var esc      = false;
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let phase = 'header';   // header → today → between → log
 
-      function pump() {
-        reader.read().then(function (res) {
-          if (res.done) { onDone(); return; }
-
-          buf += dec.decode(res.value, { stream: true });
-
-          /* Extract all complete {…} objects from buf */
-          while (pos < buf.length) {
-            var c = buf[pos];
-            if (esc)               { esc = false;     pos++; continue; }
-            if (c === '\\' && inStr) { esc = true;    pos++; continue; }
-            if (c === '"')         { inStr = !inStr;  pos++; continue; }
-            if (inStr)             {                   pos++; continue; }
-
-            if (c === '{') {
-              if (depth === 0) objStart = pos;
-              depth++;
-            } else if (c === '}') {
-              depth--;
-              if (depth === 0 && objStart >= 0) {
-                try { onItem(JSON.parse(buf.slice(objStart, pos + 1))); } catch (e) {}
-                buf      = buf.slice(pos + 1);
-                pos      = -1;
-                objStart = -1;
-              }
-            }
-            pos++;
-          }
-
-          /* Keep only the in-progress object; discard already-processed bytes */
-          if (objStart >= 0) { buf = buf.slice(objStart); pos = buf.length; objStart = 0; }
-          else               { buf = ''; pos = 0; }
-
-          pump();
-        }).catch(onError);
-      }
-      pump();
-    }).catch(onError);
-};
-
-/* ── apiStreamAttendance — nested attendance response streaming ─── */
-window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogItem, onDone, onError) {
-  fetch(url, { headers: { 'Content-Type': 'application/json' } })
-    .then(function (r) {
-      if (r.status === 401) { window.location.href = '/login.html'; return; }
-      if (r.status === 403) { window.location.href = '/select-class.html'; return; }
-      if (!r.ok) {
-        r.json().catch(function () { return {}; }).then(function (j) {
-          onError(new Error(j.error || 'HTTP ' + r.status));
-        });
-        return;
-      }
-
-      var reader = r.body.getReader();
-      var dec    = new TextDecoder();
-      var buf    = '';
-      /* phase: 'header' → 'today' → 'between' → 'log' */
-      var phase  = 'header';
-
-      /* Object extractor state — reset at each phase transition */
-      var pos = 0, depth = 0, objStart = -1, inStr = false, esc = false;
+      let pos = 0, depth = 0, objStart = -1, inStr = false, esc = false;
 
       function resetExtractor() {
         pos = 0; depth = 0; objStart = -1; inStr = false; esc = false;
       }
 
       function processBuffer() {
+        console.log(`[Stream] phase=${phase} | buf.length=${buf.length}`);
 
-        /* ── Phase: header ───────────────────────────────────────── */
+        /* Phase: header */
         if (phase === 'header') {
-          var mark = '"today":[';
-          var idx  = buf.indexOf(mark);
-          if (idx < 0) return; /* not enough data yet */
+          const mark = '"today":[';
+          const idx = buf.indexOf(mark);
+          if (idx < 0) return;
 
-          var head   = buf.slice(0, idx);
-          var dateM  = head.match(/"today_date"\s*:\s*"([^"]+)"/);
-          var statsM = head.match(/"stats"\s*:\s*(\{[^}]+\})/);
+          const head = buf.slice(0, idx);
+          const dateM = head.match(/"today_date"\s*:\s*"([^"]+)"/);
+          const statsM = head.match(/"stats"\s*:\s*(\{[^}]+\})/);
+
           try {
             onHeader({
-              today_date: dateM  ? dateM[1]             : '',
-              stats:      statsM ? JSON.parse(statsM[1]) : {}
+              today_date: dateM ? dateM[1] : '',
+              stats: statsM ? JSON.parse(statsM[1]) : {}
             });
           } catch (e) {
             onHeader({ today_date: '', stats: {} });
@@ -413,18 +348,18 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogItem, on
           buf = buf.slice(idx + mark.length);
           phase = 'today';
           resetExtractor();
-          processBuffer(); /* re-enter with remaining buffer */
+          processBuffer();
           return;
         }
 
-        /* ── Phase: today ────────────────────────────────────────── */
+        /* Phase: today array */
         if (phase === 'today') {
           while (pos < buf.length) {
-            var c = buf[pos];
-            if (esc)                 { esc = false;    pos++; continue; }
-            if (c === '\\' && inStr) { esc = true;     pos++; continue; }
-            if (c === '"')           { inStr = !inStr; pos++; continue; }
-            if (inStr)               {                  pos++; continue; }
+            const c = buf[pos];
+            if (esc) { esc = false; pos++; continue; }
+            if (c === '\\' && inStr) { esc = true; pos++; continue; }
+            if (c === '"') { inStr = !inStr; pos++; continue; }
+            if (inStr) { pos++; continue; }
 
             if (c === '{') {
               if (depth === 0) objStart = pos;
@@ -433,10 +368,11 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogItem, on
               depth--;
               if (depth === 0 && objStart >= 0) {
                 try { onTodayItem(JSON.parse(buf.slice(objStart, pos + 1))); } catch (e) {}
-                buf = buf.slice(pos + 1); pos = -1; objStart = -1;
+                buf = buf.slice(pos + 1);
+                pos = -1;
+                objStart = -1;
               }
             } else if (c === ']' && depth === 0) {
-              /* Closing bracket of today array — switch phase */
               buf = buf.slice(pos + 1);
               phase = 'between';
               resetExtractor();
@@ -446,30 +382,37 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogItem, on
             pos++;
           }
           if (objStart >= 0) { buf = buf.slice(objStart); pos = buf.length; objStart = 0; }
-          else               { buf = ''; pos = 0; }
+          else { buf = ''; pos = 0; }
           return;
         }
 
-        /* ── Phase: between (looking for "log":[) ────────────────── */
+        /* Phase: between → look for "log" (very tolerant) */
         if (phase === 'between') {
-          var mark2 = '"log":[';
-          var idx2  = buf.indexOf(mark2);
-          if (idx2 < 0) return;
-          buf = buf.slice(idx2 + mark2.length);
+          // Look for "log" anywhere (handles , "log" or ,"log" or whitespace)
+          const logIdx = buf.indexOf('"log"');
+          if (logIdx < 0) return;
+
+          // Skip past the "log" key and the colon + opening bracket
+          const afterLog = buf.slice(logIdx + 6); // skip "log"
+          const openBracket = afterLog.indexOf('[');
+          if (openBracket < 0) return;
+
+          buf = afterLog.slice(openBracket + 1);
           phase = 'log';
+          console.log('%c[Stream] → Switched to LOG phase', 'color:#a00;font-weight:bold');
           resetExtractor();
           processBuffer();
           return;
         }
 
-        /* ── Phase: log ──────────────────────────────────────────── */
+        /* Phase: log array */
         if (phase === 'log') {
           while (pos < buf.length) {
-            var c = buf[pos];
-            if (esc)                 { esc = false;    pos++; continue; }
-            if (c === '\\' && inStr) { esc = true;     pos++; continue; }
-            if (c === '"')           { inStr = !inStr; pos++; continue; }
-            if (inStr)               {                  pos++; continue; }
+            const c = buf[pos];
+            if (esc) { esc = false; pos++; continue; }
+            if (c === '\\' && inStr) { esc = true; pos++; continue; }
+            if (c === '"') { inStr = !inStr; pos++; continue; }
+            if (inStr) { pos++; continue; }
 
             if (c === '{') {
               if (depth === 0) objStart = pos;
@@ -477,27 +420,35 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogItem, on
             } else if (c === '}') {
               depth--;
               if (depth === 0 && objStart >= 0) {
-                try { onLogItem(JSON.parse(buf.slice(objStart, pos + 1))); } catch (e) {}
-                buf = buf.slice(pos + 1); pos = -1; objStart = -1;
+                try {
+                  const group = JSON.parse(buf.slice(objStart, pos + 1));
+                  console.log('%c[Stream] Received LOG GROUP', 'color:#a00;font-weight:bold', group);
+                  onLogGroup(group);
+                } catch (e) {}
+                buf = buf.slice(pos + 1);
+                pos = -1;
+                objStart = -1;
               }
             }
             pos++;
           }
           if (objStart >= 0) { buf = buf.slice(objStart); pos = buf.length; objStart = 0; }
-          else               { buf = ''; pos = 0; }
+          else { buf = ''; pos = 0; }
         }
       }
 
       function pump() {
-        reader.read().then(function (res) {
+        reader.read().then(res => {
           if (res.done) { onDone(); return; }
           buf += dec.decode(res.value, { stream: true });
           processBuffer();
           pump();
         }).catch(onError);
       }
+
       pump();
-    }).catch(onError);
+    })
+    .catch(onError);
 };
 
 /* ── apiStreamReport — streams { class_days, min_pct, rows:[{...},...] } ── */
