@@ -7,36 +7,21 @@
   <link rel="stylesheet" href="/shared.css">
   <style>
     .page-wrap { width: 100%; max-width: 960px; }
-    .att-pct   { font-size: .8rem; }
-    .arch-row td { opacity: .55; }
-    .arch-row:hover td { opacity: .8; }
-
-    /* ── Clickable name ───────────────────────────── */
-    .name-link {
-      color: var(--text); cursor: pointer;
-      border-bottom: 1px dashed transparent;
-      transition: color .15s, border-color .15s;
-    }
-    .name-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
-
-    /* ── Clickable name link ── */
+    .att-pct { font-size: .8rem; }
   </style>
 </head>
 <body>
 <nav class="navbar">
   <a href="/select-class.html" class="nb-brand"></a>
   <div class="nb-right">
-    <div class="nb-cls-sel">
-      <select id="nb-cls-select"></select>
-    </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <div class="nb-cls-sel"><select id="nb-cls-select"></select></div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
     <button class="mb" id="mb"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
 <nav class="drawer" id="drawer"></nav>
 
-<!-- Confirm modal -->
 <div class="confirm-bg" id="confirm-modal">
   <div class="confirm-box">
     <p id="confirm-text"><strong id="confirm-label"></strong></p>
@@ -47,35 +32,20 @@
   </div>
 </div>
 
-<!-- Edit modal -->
 <div class="modal-bg" id="edit-modal">
   <div class="modal">
     <h3>Edit Student</h3>
-    <div class="field">
-      <label>Name <span class="req">*</span></label>
-      <input type="text" id="em-name">
-    </div>
-    <div class="field">
-      <label>Roll No <span class="req">*</span></label>
-      <input type="text" id="em-roll">
-    </div>
-    <div class="field">
-      <label>Card UID <span class="req">*</span></label>
-      <input type="text" id="em-uid">
-    </div>
-    <div class="field">
-      <label>Batch Time <span class="req">*</span></label>
-      <div class="sel-wrap"><select id="em-batch"></select></div>
-    </div>
+    <div class="field"><label>Name <span class="req">*</span></label><input type="text" id="em-name"></div>
+    <div class="field"><label>Roll No <span class="req">*</span></label><input type="text" id="em-roll"></div>
+    <div class="field"><label>Card UID <span class="req">*</span></label><input type="text" id="em-uid"></div>
+    <div class="field"><label>Batch Time <span class="req">*</span></label><div class="sel-wrap"><select id="em-batch"></select></div></div>
     <input type="hidden" id="em-uid-orig">
     <div class="modal-actions">
-      <button class="modal-save"   onclick="submitEdit()">Save Changes</button>
+      <button class="modal-save" onclick="submitEdit()">Save Changes</button>
       <button class="modal-cancel" onclick="closeModal('edit-modal')">Cancel</button>
     </div>
   </div>
 </div>
-
-
 
 <div class="page-wrap">
   <div class="card">
@@ -85,8 +55,8 @@
         <input type="text" id="search" placeholder="Search name or roll…" oninput="filterRows()">
       </div>
       <div class="filter-bar" style="margin:0;flex-shrink:0">
-        <button class="ftab active-all" data-f="all"      onclick="setFilter('all',this)">All</button>
-        <button class="ftab"            data-f="active"   onclick="setFilter('active',this)">Active</button>
+        <button class="ftab active-all" data-f="all" onclick="setFilter('all',this)">All</button>
+        <button class="ftab" data-f="active" onclick="setFilter('active',this)">Active</button>
       </div>
       <a href="/register.html" class="btn btn-sm" style="white-space:nowrap;flex-shrink:0">+ Register</a>
     </div>
@@ -95,16 +65,7 @@
 
     <div class="tbl-wrap">
       <table id="tbl" style="display:none">
-        <thead>
-          <tr id="thead-row">
-            <th class="num-col">#</th>
-            <th>Name</th>
-            <th>Roll</th>
-            <th>Batch</th>
-            <th>Att%</th>
-            <th class="actions-col"></th>
-          </tr>
-        </thead>
+        <thead><tr id="thead-row"><th class="num-col">#</th><th>Name</th><th>Roll</th><th>Batch</th><th>Att%</th><th class="actions-col"></th></tr></thead>
         <tbody id="tbody"></tbody>
       </table>
     </div>
@@ -114,33 +75,28 @@
 
 <script src="/app.js"></script>
 <script>
-  var g_students = [];
-  var g_class    = 0;
-  var g_batches  = [];
-  var g_schema   = [];
+  let g_students = [];
+  let g_class    = 0;
+  let g_batches  = [];
+  let g_schema   = [];
 
   document.addEventListener('DOMContentLoaded', function () {
     buildNavbar('students');
-    getSession().then(function (s) {
+    getSession().then(s => {
       if (!s.class) { location.href = '/select-class.html'; return; }
       g_class = s.class;
       loadBatches();
-      // FIX-11: Chain loadStudents() after loadSchema() resolves so g_schema
-      // is always populated before the first renderTable() call. Previously they
-      // ran concurrently and schema columns could be missing on first render.
-      loadSchema().then(function () {
-        loadStudents();
-      });
-    }).catch(function () { location.href = '/login.html'; });
+      loadSchema().then(() => loadStudents());
+    }).catch(() => location.href = '/login.html');
   });
 
   function loadBatches() {
-    api('/api/batches?c=' + g_class).then(function (arr) {
+    api('/api/batches?c=' + g_class).then(arr => {
       g_batches = arr || [];
-      var sel = document.getElementById('em-batch');
+      const sel = document.getElementById('em-batch');
       sel.innerHTML = '';
-      g_batches.forEach(function (t) {
-        var opt = document.createElement('option');
+      g_batches.forEach(t => {
+        const opt = document.createElement('option');
         opt.value = t; opt.textContent = t;
         sel.appendChild(opt);
       });
@@ -148,103 +104,84 @@
   }
 
   function loadSchema() {
-    // FIX-11: Return the promise so callers can chain .then(loadStudents).
-    return api('/api/schema').then(function (s) {
-      g_schema = (s.student || []).filter(function (c) {
-        return !c.system && !c['default'] &&
-               ['name','roll','card_uid','batchtime'].indexOf(c.key) === -1 && c.ask;
-      });
-      /* Rebuild table header with any extra schema columns */
-      var tr = document.getElementById('thead-row');
+    return api('/api/schema').then(s => {
+      g_schema = (s.student || []).filter(c => 
+        !c.system && !c['default'] && 
+        !['name','roll','card_uid','batchtime'].includes(c.key) && c.ask
+      );
+      const tr = document.getElementById('thead-row');
       if (tr) {
-        tr.querySelectorAll('.schema-th').forEach(function (th) { th.remove(); });
-        var actTh = tr.querySelector('.actions-col');
-        g_schema.forEach(function (col) {
-          var th = document.createElement('th');
+        tr.querySelectorAll('.schema-th').forEach(th => th.remove());
+        const actTh = tr.querySelector('.actions-col');
+        g_schema.forEach(col => {
+          const th = document.createElement('th');
           th.className = 'schema-th';
           th.textContent = col.label;
           tr.insertBefore(th, actTh);
         });
       }
-      renderTable();
     });
   }
 
   function loadStudents() {
     g_students = [];
-    var loading  = document.getElementById('loading');
-    var tbl      = document.getElementById('tbl');
-    var emptyMsg = document.getElementById('empty-msg');
-    var tbody    = document.getElementById('tbody');
+    const loading = document.getElementById('loading');
+    const tbl = document.getElementById('tbl');
+    const emptyMsg = document.getElementById('empty-msg');
+    const tbody = document.getElementById('tbody');
 
-    if (tbl)      tbl.style.display      = 'none';
+    if (tbl) tbl.style.display = 'none';
     if (emptyMsg) emptyMsg.style.display = 'none';
-    if (loading)  loading.style.display  = 'block';
+    if (loading) loading.style.display = 'block';
 
     apiStream(
       '/api/students?c=' + g_class,
 
-      /* onItem — called once per student as it arrives from the server */
-      function (s) {
-        /* First row: show the table immediately */
+      s => {
         if (g_students.length === 0) {
-          if (loading)  loading.style.display  = 'none';
-          if (tbl)      tbl.style.display      = 'table';
+          if (loading) loading.style.display = 'none';
+          if (tbl) tbl.style.display = 'table';
           if (emptyMsg) emptyMsg.style.display = 'none';
         }
         g_students.push(s);
-
-        /* Append this row directly — no full re-render needed */
-        var rowNum   = g_students.length;
-        var pct      = s.att_pct != null ? Math.round(s.att_pct) : null;
-        var pctColor = pct !== null
-          ? (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red')
-          : 'sv-grey';
-        // FIX-12: sJson was computed here but never used — removed.
-
-        var tr = document.createElement('tr');
-        tr.innerHTML =
-          '<td class="num-col">' + rowNum + '</td>' +
-          '<td data-label="Name">' +
-            '<a class="name-link" href="/student-detail.html?uid=' + encodeURIComponent(s.uid) + '">' +
-              esc(s.name) +
-            '</a>' +
-          '</td>' +
-          '<td data-label="Roll">'  + esc(s.roll || '—') + '</td>' +
-          '<td data-label="Batch">' + esc(s.batchtime || '—') + '</td>' +
-          '<td data-label="Att%" class="att-pct ' + pctColor + '">' +
-            (pct !== null ? pct + '%' : '—') +
-          '</td>' +
-          g_schema.map(function (col) {
-            var v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
-            return '<td data-label="' + esc(col.label) + '">' + esc(String(v)) + '</td>';
-          }).join('') +
-          '<td class="actions-col">' + actionsHtml(s) + '</td>';
-
-        tbody.appendChild(tr);
+        if (tbody) tbody.appendChild(buildStudentRow(s, g_students.length));
       },
 
-      /* onDone — stream finished; do a final proper render so search/filter
-         and schema columns are all correct from the start */
-      function () {
-        if (loading) loading.style.display = 'none';
+      () => {
         if (g_students.length === 0) {
-          if (tbl)      tbl.style.display      = 'none';
+          if (tbl) tbl.style.display = 'none';
           if (emptyMsg) emptyMsg.style.display = 'block';
         } else {
-          renderTable(); /* definitive render: correct numbering, filter, schema cols */
+          renderTable();
         }
       },
 
-      /* onError */
-      function (e) {
-        if (loading) loading.textContent = 'Error: ' + e.message;
-      }
+      e => { if (loading) loading.textContent = 'Error: ' + e.message; }
     );
   }
 
-  function setFilter(f, btn) {
-    document.querySelectorAll('.ftab').forEach(function (b) {
+  function buildStudentRow(s, rowNum) {
+    const pct = s.att_pct != null ? Math.round(s.att_pct) : null;
+    const pctColor = pct !== null ? (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red') : 'sv-grey';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="num-col">${rowNum}</td>` +
+      `<td data-label="Name"><a class="name-link" href="/student-detail.html?uid=${encodeURIComponent(s.uid)}">${esc(s.name)}</a></td>` +
+      `<td data-label="Roll">${esc(s.roll || '—')}</td>` +
+      `<td data-label="Batch">${esc(s.batchtime || '—')}</td>` +
+      `<td data-label="Att%" class="att-pct ${pctColor}">${pct !== null ? pct + '%' : '—'}</td>` +
+      g_schema.map(col => {
+        const v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
+        return `<td data-label="${esc(col.label)}">${esc(String(v))}</td>`;
+      }).join('') +
+      `<td class="actions-col">${actionsHtml(s)}</td>`;
+
+    return tr;
+  }
+
+  function setFilter(f) {
+    document.querySelectorAll('.ftab').forEach(b => {
       b.className = 'ftab' + (b.dataset.f === f ? ' active-all' : '');
     });
     renderTable();
@@ -253,106 +190,53 @@
   function filterRows() { renderTable(); }
 
   function renderTable() {
-    var q    = document.getElementById('search').value.toLowerCase();
-    var filt = document.querySelector('.ftab.active-all');
-    var f    = filt ? filt.dataset.f : 'all';
+    const q = document.getElementById('search').value.toLowerCase().trim();
+    const f = document.querySelector('.ftab.active-all')?.dataset.f || 'all';
 
-    var rows = g_students.filter(function (s) {
+    const rows = g_students.filter(s => {
       if (f === 'active' && s.archived) return false;
-      /* f === 'all' shows every student including archived */
-      if (q && !(s.name.toLowerCase().includes(q) ||
-                 String(s.roll).toLowerCase().includes(q))) return false;
+      if (q && !(s.name.toLowerCase().includes(q) || String(s.roll).toLowerCase().includes(q))) return false;
       return true;
     });
 
-    var tbody = document.getElementById('tbody');
+    const tbody = document.getElementById('tbody');
     tbody.innerHTML = '';
 
     if (!rows.length) {
-      document.getElementById('tbl').style.display     = 'none';
+      document.getElementById('tbl').style.display = 'none';
       document.getElementById('empty-msg').style.display = 'block';
       return;
     }
-    document.getElementById('tbl').style.display     = 'table';
+
+    document.getElementById('tbl').style.display = 'table';
     document.getElementById('empty-msg').style.display = 'none';
 
-    rows.forEach(function (s, i) {
-      var pct      = s.att_pct != null ? Math.round(s.att_pct) : null;
-      var pctColor = pct !== null ? (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red') : 'sv-grey';
-      // FIX-12: sJson was computed here but never used — removed.
-      var tr       = document.createElement('tr');
-
-      tr.innerHTML =
-        '<td class="num-col">' + (i + 1) + '</td>' +
-        '<td data-label="Name"><a class="name-link" href="/student-detail.html?uid=' + encodeURIComponent(s.uid) + '">' + esc(s.name) + '</a></td>' +
-        '<td data-label="Roll">'  + esc(s.roll || '—') + '</td>' +
-        '<td data-label="Batch">' + esc(s.batchtime || '—') + '</td>' +
-        '<td data-label="Att%" class="att-pct ' + pctColor + '">' +
-          (pct !== null ? pct + '%' : '—') +
-        '</td>' +
-        g_schema.map(function (col) {
-          var v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
-          return '<td data-label="' + esc(col.label) + '">' + esc(String(v)) + '</td>';
-        }).join('') +
-        '<td class="actions-col">' + actionsHtml(s) + '</td>';
-      tbody.appendChild(tr);
-    });
+    rows.forEach((s, i) => tbody.appendChild(buildStudentRow(s, i+1)));
   }
 
-  // FIX-10: Use an index map so no student data is ever interpolated raw into
-  // an inline onclick string. A crafted UID could execute arbitrary JS.
-  // FIX-12: sJson was computed in onItem and renderTable() but never used — removed.
-  var g_actionMap = {};
-  var g_actionIdx = 0;
+  let g_actionMap = {};
+  let g_actionIdx = 0;
 
   function actionsHtml(s) {
-    var key = 'k' + (g_actionIdx++);
+    const key = 'k' + (g_actionIdx++);
     g_actionMap[key] = s;
-    return '<button class="act-btn" onclick="openEdit(g_actionMap[\'' + key + '\'])">Edit</button> ' +
-           '<button class="act-btn act-btn-del" onclick="doDelete(g_actionMap[\'' + key + '\'].uid, g_actionMap[\'' + key + '\'].name)">Delete</button>';
+    return `<button class="act-btn" onclick="openEdit(g_actionMap['${key}'])">Edit</button> ` +
+           `<button class="act-btn act-btn-del" onclick="doDelete(g_actionMap['${key}'].uid, g_actionMap['${key}'].name)">Delete</button>`;
   }
 
-  /* ══════════════ Archive / edit / delete ══════════════ */
-  function doArchive(uid, name) {
-    confirmAction('Archive ' + name + '?', function () {
-      api('/api/students/archive?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
-        .then(function () {
-          // Optimistic: mark archived locally
-          for (var i = 0; i < g_students.length; i++) {
-            if (g_students[i].uid === uid) { g_students[i].archived = 1; break; }
-          }
-          renderTable();
-          showToast('Archived');
-        })
-        .catch(function (e) { showToast(e.message, true); });
-    });
-  }
-  function doRestore(uid) {
-    api('/api/students/restore?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
-      .then(function () {
-        for (var i = 0; i < g_students.length; i++) {
-          if (g_students[i].uid === uid) { g_students[i].archived = 0; break; }
-        }
-        renderTable();
-        showToast('Restored');
-      })
-      .catch(function (e) { showToast(e.message, true); });
-  }
   function doDelete(uid, name) {
-    confirmAction('Permanently delete ' + name + '? This cannot be undone.', function () {
-      // Optimistic: remove from local state immediately
-      var removed = null, removedIdx = -1;
-      for (var i = 0; i < g_students.length; i++) {
-        if (g_students[i].uid === uid) { removed = g_students[i]; removedIdx = i; break; }
+    confirmAction(`Permanently delete ${name}? This cannot be undone.`, () => {
+      let removed = null, idx = -1;
+      for (let i = 0; i < g_students.length; i++) {
+        if (g_students[i].uid === uid) { removed = g_students[i]; idx = i; break; }
       }
-      if (removedIdx >= 0) g_students.splice(removedIdx, 1);
+      if (idx >= 0) g_students.splice(idx, 1);
       renderTable();
       showToast('Deleted');
 
-      api('/api/students/delete?uid=' + encodeURIComponent(uid) + '&c=' + g_class, 'DELETE')
-        .catch(function (e) {
-          // Revert: put student back
-          if (removed && removedIdx >= 0) g_students.splice(removedIdx, 0, removed);
+      api(`/api/students/delete?uid=${encodeURIComponent(uid)}&c=${g_class}`, 'DELETE')
+        .catch(e => {
+          if (removed && idx >= 0) g_students.splice(idx, 0, removed);
           renderTable();
           showToast(e.message, true);
         });
@@ -361,30 +245,32 @@
 
   function openEdit(s) {
     document.getElementById('em-uid-orig').value = s.uid;
-    document.getElementById('em-name').value     = s.name;
-    document.getElementById('em-roll').value     = s.roll;
-    document.getElementById('em-uid').value      = s.uid;
-    var sel = document.getElementById('em-batch');
-    for (var i = 0; i < sel.options.length; i++) {
+    document.getElementById('em-name').value = s.name;
+    document.getElementById('em-roll').value = s.roll;
+    document.getElementById('em-uid').value = s.uid;
+    const sel = document.getElementById('em-batch');
+    for (let i = 0; i < sel.options.length; i++) {
       if (sel.options[i].value === s.batchtime) { sel.selectedIndex = i; break; }
     }
     openModal('edit-modal');
   }
-  function submitEdit() {
-    var body = {
-      uid_orig:  document.getElementById('em-uid-orig').value,
-      name:      document.getElementById('em-name').value.trim(),
-      roll:      document.getElementById('em-roll').value.trim(),
-      card_uid:  document.getElementById('em-uid').value.trim(),
-      batchtime: document.getElementById('em-batch').value,
-    };
-    if (!body.name || !body.roll || !body.card_uid) { showToast('Fill all fields', true); return; }
 
-    // Optimistic: apply change in local state immediately
-    var origUid = body.uid_orig;
-    var backup = null, idx = -1;
-    for (var i = 0; i < g_students.length; i++) {
-      if ((g_students[i].uid || g_students[i].card_uid) === origUid) {
+  function submitEdit() {
+    const body = {
+      uid_orig: document.getElementById('em-uid-orig').value,
+      name: document.getElementById('em-name').value.trim(),
+      roll: document.getElementById('em-roll').value.trim(),
+      card_uid: document.getElementById('em-uid').value.trim(),
+      batchtime: document.getElementById('em-batch').value
+    };
+    if (!body.name || !body.roll || !body.card_uid) {
+      showToast('Fill all fields', true);
+      return;
+    }
+
+    let backup = null, idx = -1;
+    for (let i = 0; i < g_students.length; i++) {
+      if ((g_students[i].uid || g_students[i].card_uid) === body.uid_orig) {
         backup = Object.assign({}, g_students[i]);
         idx = i;
         g_students[i] = Object.assign({}, g_students[i], {
@@ -395,12 +281,12 @@
         break;
       }
     }
+
     closeModal('edit-modal');
     renderTable();
     showToast('Updated');
 
-    api('/api/students/edit', 'POST', body).catch(function (e) {
-      // Revert on failure
+    api('/api/students/edit', 'POST', body).catch(e => {
       if (idx >= 0 && backup) g_students[idx] = backup;
       renderTable();
       showToast(e.message, true);

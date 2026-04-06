@@ -7,25 +7,19 @@
   <link rel="stylesheet" href="/shared.css">
   <style>
     .page-wrap { width: 100%; max-width: 980px; }
-    .controls {
-      display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap;
-      margin-bottom: 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border);
-    }
+    .controls { display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
     .controls .field { margin: 0; }
     .pct-cell  { min-width: 130px; }
     .pct-num   { font-size: .82rem; font-weight: bold; margin-bottom: .22rem; }
     tfoot td   { font-weight: bold; color: var(--accent); font-size: .76rem; letter-spacing: .07em; padding: .7rem .9rem; border-top: 2px solid var(--accent); }
     .export-btn { margin-left: auto; }
-    #summary-bar {
-      display: flex; gap: 1.5rem; flex-wrap: wrap;
-      margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border);
-    }
+    #summary-bar { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
     #summary-bar .sb { display: flex; flex-direction: column; gap: .2rem; }
     #summary-bar .sv { font-size: 1.3rem; font-weight: bold; }
     #summary-bar .sl { font-size: .59rem; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
+    .loading-status { font-size: .75rem; color: var(--muted); margin-top: .5rem; }
     @media (max-width: 500px) {
       .controls { flex-direction: column; align-items: stretch; }
-      .controls .btn { align-self: flex-start; }
       .export-btn { margin-left: 0; }
     }
   </style>
@@ -34,10 +28,8 @@
 <nav class="navbar">
   <a href="/select-class.html" class="nb-brand"></a>
   <div class="nb-right">
-    <div class="nb-cls-sel">
-      <select id="nb-cls-select"></select>
-    </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <div class="nb-cls-sel"><select id="nb-cls-select"></select></div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
     <button class="mb" id="mb"><span></span><span></span><span></span></button>
   </div>
 </nav>
@@ -66,7 +58,10 @@
       </div>
     </div>
 
-    <div id="loading" style="display:none" class="empty"><span class="spinner"></span></div>
+    <div id="loading" class="empty">
+      <span class="spinner"></span>
+      <div class="loading-status" id="loading-status">Preparing report...</div>
+    </div>
 
     <div class="tbl-wrap">
       <table id="rep-table" style="display:none">
@@ -90,163 +85,142 @@
 
 <script src="/app.js"></script>
 <script>
-  var g_class     = 0;
-  var g_reportGen = 0;   /* incremented each loadReport() — stale callbacks bail early */
-  var g_rows      = [];
-  var g_classDays = 0;
-  var g_minPct    = 75;
-
-  document.addEventListener('DOMContentLoaded', function () {
-    buildNavbar('report');
-
-    var now = new Date();
-    document.getElementById('month-pick').value =
-      now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-
-    getSession().then(function (s) {
-      if (!s.class) { location.href = '/select-class.html'; return; }
-      g_class = s.class;
-      loadReport();
-    }).catch(function () { location.href = '/login.html'; });
-  });
-
-  function loadReport() {
-    var gen   = ++g_reportGen;
-    var month = document.getElementById('month-pick').value;
-    if (!month) { showToast('Select a month', true); return; }
-
-    document.getElementById('loading').style.display      = 'block';
-    document.getElementById('rep-table').style.display    = 'none';
-    document.getElementById('rep-empty').style.display    = 'none';
-    document.getElementById('summary-wrap').style.display = 'none';
-    document.getElementById('csv-btn').style.display      = 'none';
-    document.getElementById('rep-body').innerHTML         = '';
-    document.getElementById('rep-foot').innerHTML         = '';
-
-    g_rows = []; g_classDays = 0; g_minPct = 75;
-
-    apiStreamReport(
-      '/api/report?c=' + g_class + '&month=' + month,
-
-      /* onHeader */
-      function (hdr) {
-        if (gen !== g_reportGen) return;
-        g_classDays = hdr.class_days;
-        g_minPct    = hdr.min_pct;
-      },
-
-      /* onRow — render each student as it arrives */
-      function (r) {
-        if (gen !== g_reportGen) return;
-        g_rows.push(r);
-        if (g_rows.length === 1) {
-          document.getElementById('loading').style.display      = 'none';
-          document.getElementById('rep-table').style.display    = 'table';
-          document.getElementById('summary-wrap').style.display = 'block';
-        }
-        appendRow(r, g_rows.length);
-        updateSummary();
-      },
-
-      /* onDone */
-      function () {
-        if (gen !== g_reportGen) return;
-        document.getElementById('loading').style.display = 'none';
-        if (g_rows.length === 0) {
-          document.getElementById('rep-empty').style.display = 'block';
-          return;
-        }
-        updateSummary();
-        renderFooter();
-        var csvBtn = document.getElementById('csv-btn');
-        csvBtn.href = '/api/admin/export-csv?c=' + g_class + '&type=attendance&month=' + month;
-        csvBtn.style.display = 'inline-flex';
-      },
-
-      /* onError */
-      function (e) {
-        if (gen !== g_reportGen) return;
-        document.getElementById('loading').style.display = 'none';
-        showToast(e.message, true);
-      }
-    );
-  }
-
-  function appendRow(r, idx) {
-    var pct    = Math.round(r.pct || 0);
-    var cls    = pct >= g_minPct ? 'sv-green'      : pct >= 50 ? 'sv-warn'      : 'sv-red';
-    var barCls = pct >= g_minPct ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red';
-    var status = pct >= g_minPct
-      ? '<span class="badge badge-green">OK</span>'
-      : '<span class="badge badge-warn">Low</span>';
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td class="num-col">'      + idx              + '</td>' +
-      '<td data-label="Name">'    + esc(r.name)      + '</td>' +
-      '<td data-label="Roll">'    + esc(r.roll)      + '</td>' +
-      '<td data-label="Present">' + (r.present || 0) + ' / ' + g_classDays + '</td>' +
-      '<td data-label="Att%" class="pct-cell">' +
-        '<div class="pct-num ' + cls + '">' + pct + '%</div>' +
-        '<div class="pct-bar-wrap"><div class="pct-bar ' + barCls + '" style="width:' + pct + '%"></div></div>' +
-      '</td>' +
-      '<td data-label="Status">' + status + '</td>';
-    document.getElementById('rep-body').appendChild(tr);
-  }
-
-  function updateSummary() {
-    var total      = g_rows.length;
-    var belowCount = g_rows.filter(function (r) { return (r.pct || 0) < g_minPct; }).length;
-    document.getElementById('rp-days').textContent     = g_classDays;
-    document.getElementById('rp-students').textContent = total;
-    document.getElementById('rp-ok').textContent       = total - belowCount;
-    document.getElementById('rp-below').textContent    = belowCount;
-  }
-
-  function renderFooter() {
-    var total   = g_rows.length;
-    var avgPct  = total ? Math.round(g_rows.reduce(function (s, r) { return s + (r.pct || 0); }, 0) / total) : 0;
-    var okCount = g_rows.filter(function (r) { return (r.pct || 0) >= g_minPct; }).length;
-    document.getElementById('rep-foot').innerHTML =
-      '<td colspan="3">Class Average</td><td></td>' +
-      '<td>' + avgPct + '%</td>' +
-      '<td>' + okCount + '/' + total + ' OK</td>';
-  }
+  let g_class      = 0;
+  let g_reportGen  = 0;
+  let g_rows       = [];
+  let g_classDays  = 0;
+  let g_minPct     = 75;
 
   function esc(v) {
     return String(v == null ? '' : v)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
-</script>
-<script>
-  var g_class = 0;
 
-  document.addEventListener('DOMContentLoaded', function () {
+  function appendRow(r, idx) {
+    const pct     = Math.round(r.pct || 0);
+    const cls     = pct >= g_minPct ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red';
+    const barCls  = pct >= g_minPct ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red';
+    const status  = pct >= g_minPct ? '<span class="badge badge-green">OK</span>' : '<span class="badge badge-warn">Low</span>';
+
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td class="num-col">${idx}</td>` +
+      `<td data-label="Name">${esc(r.name)}</td>` +
+      `<td data-label="Roll">${esc(r.roll)}</td>` +
+      `<td data-label="Present">${r.present || 0} / ${g_classDays}</td>` +
+      `<td data-label="Att%" class="pct-cell">` +
+        `<div class="pct-num ${cls}">${pct}%</div>` +
+        `<div class="pct-bar-wrap"><div class="pct-bar ${barCls}" style="width:${pct}%"></div></div>` +
+      `</td>` +
+      `<td data-label="Status">${status}</td>`;
+
+    document.getElementById('rep-body').appendChild(tr);
+  }
+
+  function updateSummary() {
+    const total = g_rows.length;
+    const below = g_rows.filter(r => (r.pct || 0) < g_minPct).length;
+    document.getElementById('rp-days').textContent     = g_classDays;
+    document.getElementById('rp-students').textContent = total;
+    document.getElementById('rp-ok').textContent       = total - below;
+    document.getElementById('rp-below').textContent    = below;
+  }
+
+  function renderFooter() {
+    const total  = g_rows.length;
+    const avgPct = total ? Math.round(g_rows.reduce((s, r) => s + (r.pct || 0), 0) / total) : 0;
+    const okCnt  = g_rows.filter(r => (r.pct || 0) >= g_minPct).length;
+    document.getElementById('rep-foot').innerHTML =
+      `<td colspan="3">Class Average</td><td></td>` +
+      `<td>${avgPct}%</td>` +
+      `<td>${okCnt}/${total} OK</td>`;
+  }
+
+  function loadReport() {
+    const gen = ++g_reportGen;
+    const month = document.getElementById('month-pick').value;
+    if (!month) { showToast('Please select a month', true); return; }
+
+    // Reset UI
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('loading-status').textContent = 'Preparing report...';
+    document.getElementById('rep-table').style.display = 'none';
+    document.getElementById('rep-empty').style.display = 'none';
+    document.getElementById('summary-wrap').style.display = 'none';
+    document.getElementById('csv-btn').style.display = 'none';
+    document.getElementById('rep-body').innerHTML = '';
+    document.getElementById('rep-foot').innerHTML = '';
+
+    g_rows = [];
+    g_classDays = 0;
+    g_minPct = 75;
+
+    apiStreamReport(
+      `/api/report?c=${g_class}&month=${month}`,
+
+      hdr => {
+        if (gen !== g_reportGen) return;
+        g_classDays = hdr.class_days || 0;
+        g_minPct    = hdr.min_pct || 75;
+        updateSummary();
+      },
+
+      r => {
+        if (gen !== g_reportGen) return;
+        g_rows.push(r);
+
+        // Show table on first row
+        if (g_rows.length === 1) {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('rep-table').style.display = 'table';
+          document.getElementById('summary-wrap').style.display = 'block';
+        }
+
+        appendRow(r, g_rows.length);
+        updateSummary();
+
+        // Optional: show progress
+        document.getElementById('loading-status').textContent = `Loaded ${g_rows.length} students...`;
+      },
+
+      () => {
+        if (gen !== g_reportGen) return;
+        document.getElementById('loading').style.display = 'none';
+
+        if (g_rows.length === 0) {
+          document.getElementById('rep-empty').style.display = 'block';
+          return;
+        }
+
+        renderFooter();
+
+        const csvBtn = document.getElementById('csv-btn');
+        csvBtn.href = `/api/admin/export-csv?c=${g_class}&type=attendance&month=${month}`;
+        csvBtn.style.display = 'inline-flex';
+      },
+
+      e => {
+        if (gen !== g_reportGen) return;
+        document.getElementById('loading').style.display = 'none';
+        showToast(e.message || 'Failed to load report', true);
+      }
+    );
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
     buildNavbar('report');
 
-    /* Default to current month (current year + current month) */
-    var now = new Date();
+    const now = new Date();
     document.getElementById('month-pick').value =
       now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
 
-    getSession().then(function (s) {
+    getSession().then(s => {
       if (!s.class) { location.href = '/select-class.html'; return; }
       g_class = s.class;
-      /* Load report for current month immediately */
       loadReport();
-    }).catch(function () { location.href = '/login.html'; });
+    }).catch(() => location.href = '/login.html');
   });
-
-  // FIX-18: Added escaping for >, ", and ' — previously missing, leaving values
-  // inside attributes injectable. Now matches the complete esc() in other pages.
-  function esc(v) {
-    return String(v == null ? '' : v)
-      .replace(/&/g,  '&amp;')
-      .replace(/</g,  '&lt;')
-      .replace(/>/g,  '&gt;')
-      .replace(/"/g,  '&quot;')
-      .replace(/'/g,  '&#39;');
-  }
 </script>
 </body>
 </html>

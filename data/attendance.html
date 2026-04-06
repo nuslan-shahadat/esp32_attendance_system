@@ -58,21 +58,13 @@
     }
     .toolbar input[type="text"] { padding-left:1.9rem; width:100%; }
 
-    .today-table-wrap,.log-table-wrap {
-      overflow:hidden; border:1px solid var(--border); border-radius:4px; margin-bottom:.9rem;
-    }
+    .today-table-wrap { overflow:hidden; border:1px solid var(--border); border-radius:4px; margin-bottom:.9rem; }
     tbody tr.clickable { cursor:pointer; }
     tbody tr.clickable:hover { background:var(--row-hover); }
     .num-col { width:1%; white-space:nowrap; }
 
-    .status-present {
-      display:inline-flex; align-items:center; gap:.25rem;
-      color:var(--accent); font-size:.72rem; font-weight:bold; letter-spacing:.08em; text-transform:uppercase;
-    }
-    .status-absent {
-      display:inline-flex; align-items:center; gap:.25rem;
-      color:var(--danger); font-size:.72rem; font-weight:bold; letter-spacing:.08em; text-transform:uppercase;
-    }
+    .status-present { color:var(--accent); font-size:.72rem; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; }
+    .status-absent  { color:var(--danger); font-size:.72rem; font-weight:bold; letter-spacing:.08em; text-transform:uppercase; }
 
     .date-group { margin-bottom:1.15rem; }
     .date-group-hdr {
@@ -81,15 +73,12 @@
       cursor:pointer; user-select:none;
     }
     .date-group-hdr .dg-date { font-size:.78rem; color:var(--accent); letter-spacing:.1em; font-weight:bold; }
-    .date-group-hdr .dg-cnt  {
-      font-size:.68rem; color:var(--muted); margin-left:auto;
-      background:var(--badge-bg); border:1px solid var(--border); border-radius:3px; padding:.1rem .4rem;
-    }
+    .date-group-hdr .dg-cnt  { font-size:.68rem; color:var(--muted); margin-left:auto; background:var(--badge-bg); border:1px solid var(--border); border-radius:3px; padding:.1rem .4rem; }
     .date-group-hdr .dg-arr  { color:var(--muted); font-size:.7rem; transition:transform .2s; flex-shrink:0; }
-    .date-group.collapsed .dg-arr         { transform:rotate(-90deg); }
+    .date-group.collapsed .dg-arr { transform:rotate(-90deg); }
     .date-group-body { border:1px solid var(--border); border-top:none; border-radius:0 0 4px 4px; overflow:hidden; }
     .date-group.collapsed .date-group-body { display:none; }
-    .date-group.collapsed .date-group-hdr  { border-radius:4px; }
+    .date-group.collapsed .date-group-hdr { border-radius:4px; }
 
     .empty-note {
       color:var(--muted); font-size:.76rem; text-align:center;
@@ -108,10 +97,8 @@
 <nav class="navbar">
   <a href="/select-class.html" class="nb-brand"></a>
   <div class="nb-right">
-    <div class="nb-cls-sel">
-      <select id="nb-cls-select"></select>
-    </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <div class="nb-cls-sel"><select id="nb-cls-select"></select></div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
     <button class="mb" id="mb"><span></span><span></span><span></span></button>
   </div>
 </nav>
@@ -120,7 +107,6 @@
 
 <div class="confirm-bg" id="confirm-modal">
   <div class="confirm-box">
-    <!-- FIX-07: Fully dynamic text — confirmAction() sets the whole sentence -->
     <p id="confirm-text"><strong id="confirm-label"></strong></p>
     <div class="confirm-actions">
       <button class="confirm-yes" id="confirm-yes-btn">Delete</button>
@@ -134,20 +120,20 @@
     <h2>
       <span id="page-title">Attendance</span>
       <span class="subtitle" id="page-subtitle"></span>
-      <button class="btn-sm btn btn-outline" style="margin-left:auto;margin-top:0" onclick="loadData()">↺ Refresh</button>
+      <button class="btn-sm btn btn-outline" onclick="loadData()">↺ Refresh</button>
     </h2>
 
     <div class="scan-status-bar" id="scan-bar">
-      <span class="scan-dot"   id="scan-dot"></span>
+      <span class="scan-dot" id="scan-dot"></span>
       <span class="scan-label" id="scan-label">RFID Scanner</span>
       <span class="scan-event" id="scan-event"></span>
     </div>
 
     <div class="stat-bar" id="stat-bar">
-      <div class="sb"><span class="sv sv-grey"  id="st-total">—</span><span class="sl">Registered</span></div>
+      <div class="sb"><span class="sv sv-grey" id="st-total">—</span><span class="sl">Registered</span></div>
       <div class="sb"><span class="sv sv-green" id="st-present">—</span><span class="sl">Present</span></div>
-      <div class="sb"><span class="sv sv-red"   id="st-absent">—</span><span class="sl">Absent</span></div>
-      <div class="sb"><span class="sv sv-grey"  id="st-pct">—</span><span class="sl">Att%</span></div>
+      <div class="sb"><span class="sv sv-red" id="st-absent">—</span><span class="sl">Absent</span></div>
+      <div class="sb"><span class="sv sv-grey" id="st-pct">—</span><span class="sl">Att%</span></div>
     </div>
 
     <div class="tab-shell">
@@ -161,9 +147,9 @@
     <!-- TODAY TAB -->
     <div id="today-section">
       <div class="filter-bar" id="today-filter-bar">
-        <button type="button" class="ftab active-all" data-filter="all">All</button>
-        <button type="button" class="ftab" data-filter="present">● Present</button>
-        <button type="button" class="ftab" data-filter="absent">● Absent</button>
+        <button class="ftab active-all" data-filter="all">All</button>
+        <button class="ftab" data-filter="present">● Present</button>
+        <button class="ftab" data-filter="absent">● Absent</button>
       </div>
       <div class="toolbar">
         <div class="search-wrap">
@@ -173,118 +159,364 @@
       <div class="today-table-wrap">
         <table>
           <thead>
-            <tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Status</th><th>Time</th><th></th></tr>
+            <tr><th class="num-col">#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Status</th><th>Time</th><th></th></tr>
           </thead>
-          <tbody id="today-tbody">
-            <tr><td colspan="7" class="empty">Loading…</td></tr>
-          </tbody>
+          <tbody id="today-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
 
-    <!-- LOG TAB -->
+    <!-- FULL LOG TAB -->
     <div id="log-section" style="display:none">
       <div class="toolbar">
         <div class="search-wrap">
           <input type="text" id="log-search" placeholder="Search name or UID…" oninput="filterLog()">
         </div>
       </div>
-      <div id="log-groups">
-        <div class="empty-note">Loading…</div>
-      </div>
+      <div id="log-groups"><div class="empty-note">Loading…</div></div>
     </div>
-
-    <!-- Mark Attendance section REMOVED per requirements -->
-
   </div>
 </div>
 
 <script src="/app.js"></script>
 <script>
-  var g_class       = 0;
-  var g_sseHandle   = null;
-  var g_todayRows   = [];
-  var g_todayFilter = 'all';
-  var g_loadGen     = 0;   /* incremented each loadData() — stale stream callbacks bail early */
-  // FIX-09: Removed g_att_schema — assigned but never read; also removed the
-  // api('/api/schema') call that populated it, saving a round-trip on every load.
+  /* ===============================================
+     ATTENDANCE PAGE - FULLY CLEANED & OPTIMIZED
+     Matches students.html streaming pattern exactly
+     =============================================== */
 
-  /* ─── Helpers ─────────────────────────────────────────── */
-  function pad2(n){ return String(n).padStart(2,'0'); }
-  function localDateStr(d){
-    return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+  let g_class       = 0;
+  let g_todayRows   = [];
+  let g_todayFilter = 'all';
+  let g_loadGen     = 0;
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function localDateStr(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
   }
-  function getTodayName(){ return localDateStr(new Date()); }
-  function esc(v){
-    return String(v==null?'':v)
+  function getTodayName() { return localDateStr(new Date()); }
+
+  function esc(v) {
+    return String(v == null ? '' : v)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
-  /* Normalize a "today" entry — backend gives {uid,name,roll,batch,present:bool,time} */
-  function normalizeTodayItem(item){
-    if(!item) return {name:'',roll:'',uid:'',batch:'',time:'',status:'absent'};
+  function normalizeTodayItem(item) {
+    if (!item) return {name:'', roll:'', uid:'', batch:'', time:'', status:'absent'};
     return {
       name:   item.name  || item.nm        || '',
       roll:   item.roll  || item.rl        || '',
       uid:    item.uid   || item.card_uid  || '',
       batch:  item.batch || item.batchtime || item.bt || '',
       time:   item.time  || item.entry_time|| '',
-      /* ← THE FIX: use the boolean present field, not sub-arrays */
       status: item.present ? 'present' : 'absent'
     };
   }
 
-  /* Normalize an individual log record */
-  function normalizeLogRecord(item, date){
-    if(!item) return {name:'',roll:'',uid:'',batch:'',time:'',status:'',id:'',date:date||''};
-    return {
-      name:   item.name   || item.nm   || '',
-      roll:   item.roll   || item.rl   || '',
-      uid:    item.uid    || item.card_uid || '',
-      batch:  item.batch  || item.batchtime || item.bt || '',
-      time:   item.time   || item.entry_time || '',
-      status: item.status || 'present',
-      id:     item.id     || '',
-      date:   item.date   || date || ''
-    };
+  function renderStats(total, present, absent) {
+    document.getElementById('st-total').textContent   = total;
+    document.getElementById('st-present').textContent = present;
+    document.getElementById('st-absent').textContent  = absent;
+    document.getElementById('st-pct').textContent     = total > 0 ? Math.round((present*100)/total)+'%' : '—';
   }
 
-  /* ─── Filter buttons ─────────────────────────────────── */
-  function setActiveFilter(filter){
-    g_todayFilter = filter||'all';
-    document.querySelectorAll('#today-filter-bar .ftab').forEach(function(btn){
+  function setActiveFilter(filter) {
+    g_todayFilter = filter || 'all';
+    document.querySelectorAll('#today-filter-bar .ftab').forEach(btn => {
       btn.classList.remove('active-all','active-present','active-absent');
-      if(btn.dataset.filter===g_todayFilter)
-        btn.classList.add(g_todayFilter==='all'?'active-all':'active-'+g_todayFilter);
+      if (btn.dataset.filter === g_todayFilter) {
+        btn.classList.add(g_todayFilter === 'all' ? 'active-all' : 'active-' + g_todayFilter);
+      }
     });
     filterToday();
   }
 
-  /* ─── Stats ──────────────────────────────────────────── */
-  function renderStats(total, present, absent){
-    document.getElementById('st-total').textContent   = total;
-    document.getElementById('st-present').textContent = present;
-    document.getElementById('st-absent').textContent  = absent;
-    document.getElementById('st-pct').textContent     =
-      total>0 ? Math.round((present*100)/total)+'%' : '—';
+  function buildTodayRow(r, rowNum) {
+    const statusHtml = r.status === 'present'
+      ? `<span class="status-present">● Present</span>`
+      : `<span class="status-absent">● Absent</span>`;
+
+    const nameLink = r.uid
+      ? `<a href="/student-detail.html?uid=${encodeURIComponent(r.uid)}" style="color:var(--text);text-decoration:none">${esc(r.name || '—')}</a>`
+      : esc(r.name || '—');
+
+    const actionCell = (r.uid && r.status === 'absent')
+      ? `<td><button class="btn-sm btn btn-outline ajax-mark-btn" style="padding:.18rem .5rem;font-size:.62rem" data-uid="${esc(r.uid)}">+ Mark</button></td>`
+      : '<td></td>';
+
+    const tr = document.createElement('tr');
+    tr.className = 'clickable';
+    if (r.uid) {
+      tr.addEventListener('click', e => {
+        if (!e.target.closest('a') && !e.target.closest('button')) {
+          location.href = `/student-detail.html?uid=${encodeURIComponent(r.uid)}`;
+        }
+      });
+    }
+
+    tr.innerHTML =
+      `<td class="num-col">${rowNum}</td>` +
+      `<td>${nameLink}</td>` +
+      `<td><span class="badge badge-grey">${esc(r.roll || '—')}</span></td>` +
+      `<td><span class="badge badge-green" style="font-size:.64rem">${esc(r.uid || '—')}</span></td>` +
+      `<td><span style="color:var(--muted);font-size:.82rem">${esc(r.batch || '—')}</span></td>` +
+      `<td>${statusHtml}</td>` +
+      `<td>${r.time ? `<span style="color:var(--text);font-size:.83rem">${esc(r.time)}</span>` : `<span style="color:var(--dim);font-size:.78rem">—</span>`}</td>` +
+      actionCell;
+
+    if (r.uid && r.status === 'absent') {
+      const btn = tr.querySelector('.ajax-mark-btn');
+      if (btn) btn.addEventListener('click', e => { e.stopPropagation(); markPresent(btn.dataset.uid, btn); });
+    }
+    return tr;
   }
 
-  /* ─── Init ───────────────────────────────────────────── */
-  document.addEventListener('DOMContentLoaded', function(){
-    buildNavbar('attendance');
-    var today = localDateStr(new Date());
-
-    document.getElementById('page-subtitle').textContent = 'Loading…';
-
-    document.querySelectorAll('#today-filter-bar .ftab').forEach(function(btn){
-      btn.addEventListener('click', function(){ setActiveFilter(btn.dataset.filter); });
+  function filterToday() {
+    const q = (document.getElementById('today-search')?.value || '').toLowerCase().trim();
+    let rows = g_todayRows.filter(r => {
+      if (g_todayFilter !== 'all' && r.status !== g_todayFilter) return false;
+      if (!q) return true;
+      return [r.name, r.roll, r.uid, r.batch, r.time].some(v => String(v||'').toLowerCase().includes(q));
     });
 
-    getSession().then(function(s){
-      if(!s.class){ location.href='/select-class.html'; return; }
+    rows.sort((a,b) => a.status !== b.status ? (a.status==='present' ? -1 : 1) : String(a.name||'').localeCompare(String(b.name||'')));
+
+    const tbody = document.getElementById('today-tbody');
+    tbody.innerHTML = '';
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="7" class="empty">No results</td></tr>`;
+      return;
+    }
+    rows.forEach((r, i) => tbody.appendChild(buildTodayRow(r, i+1)));
+  }
+
+  function loadData() {
+    const gen = ++g_loadGen;
+    const tbody = document.getElementById('today-tbody');
+    const logBox = document.getElementById('log-groups');
+
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+    if (logBox) logBox.innerHTML = '<div class="empty-note">Loading…</div>';
+
+    g_todayRows = [];
+    let firstLogGroup = true;
+
+    apiStreamAttendance(
+      `/api/attendance?c=${g_class}`,
+
+      header => { if (gen === g_loadGen) renderStats(header.stats?.total||0, header.stats?.present||0, header.stats?.absent||0); },
+
+      item => {
+        if (gen !== g_loadGen) return;
+        const r = normalizeTodayItem(item);
+        g_todayRows.push(r);
+        if (g_todayRows.length === 1 && tbody) tbody.innerHTML = '';
+        if (tbody) tbody.appendChild(buildTodayRow(r, g_todayRows.length));
+      },
+
+      group => {
+        if (gen !== g_loadGen) return;
+        if (firstLogGroup) { if (logBox) logBox.innerHTML = ''; firstLogGroup = false; }
+        appendLogGroup(group);
+      },
+
+      () => {
+        if (gen !== g_loadGen) return;
+        if (g_todayRows.length === 0 && tbody) {
+          tbody.innerHTML = `<tr><td colspan="7" class="empty">No students found.</td></tr>`;
+        } else {
+          filterToday();
+        }
+        if (firstLogGroup && logBox) logBox.innerHTML = `<div class="empty-note">No attendance records yet.</div>`;
+      },
+
+      err => {
+        if (gen !== g_loadGen) return;
+        const msg = esc(err.message || 'Unknown error');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty">Error: ${msg}</td></tr>`;
+        if (logBox) logBox.innerHTML = `<div class="empty-note">Error: ${msg}</div>`;
+      }
+    );
+  }
+
+  /* ==================== RFID & Other Functions ==================== */
+  function startRFIDPoll() {
+    const dot = document.getElementById('scan-dot');
+    const label = document.getElementById('scan-label');
+    const evEl = document.getElementById('scan-event');
+    if (!dot || !label || !evEl) return;
+
+    let lastSeq = 0;
+    dot.className = 'scan-dot connected';
+    label.textContent = 'RFID Live';
+
+    function poll() {
+      fetch('/api/rfid-events', {credentials:'same-origin'})
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d) return;
+          dot.className = 'scan-dot connected';
+          label.textContent = 'RFID Live';
+
+          if (d.seq && d.seq !== lastSeq) {
+            lastSeq = d.seq;
+            dot.className = 'scan-dot scanning';
+            setTimeout(() => dot.className = 'scan-dot connected', 500);
+
+            const uid = String(d.uid || '').trim();
+            if (d.status === 'registered') {
+              evEl.className = 'scan-event';
+              evEl.textContent = `✓ ${d.name || d.uid} — ${d.time || ''}`;
+              g_todayRows.forEach(r => { if (String(r.uid || '').trim() === uid) { r.status = 'present'; r.time = d.time || ''; } });
+              const p = g_todayRows.filter(r => r.status==='present').length;
+              const a = g_todayRows.filter(r => r.status==='absent').length;
+              renderStats(g_todayRows.length, p, a);
+              filterToday();
+              clearTimeout(window._rfidReloadTimer);
+              window._rfidReloadTimer = setTimeout(loadData, 4000);
+            } else if (d.status === 'already') {
+              evEl.className = 'scan-event';
+              evEl.textContent = `↩ Already: ${d.name || d.uid}`;
+            } else if (d.status === 'unknown') {
+              evEl.className = 'scan-event err';
+              evEl.textContent = `? Unknown: ${d.uid}`;
+            }
+            clearTimeout(evEl._t);
+            evEl._t = setTimeout(() => { evEl.textContent=''; evEl.className='scan-event'; }, 5000);
+          }
+        })
+        .catch(() => { dot.className = 'scan-dot'; label.textContent = 'Reconnecting…'; });
+    }
+    poll();
+    setInterval(poll, 1500);
+  }
+
+  function markPresent(uid, btn) {
+    if (!uid) return;
+    const today = getTodayName();
+    const now = new Date();
+    const hhmm = `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+
+    btn.disabled = true; btn.textContent = '…';
+
+    api('/api/attendance/mark', 'POST', { uid, date: today, time: hhmm })
+      .then(() => {
+        g_todayRows.forEach(r => { if (r.uid === uid) { r.status = 'present'; r.time = hhmm; } });
+        filterToday();
+        refreshSummary();
+        showToast(`✓ Marked present: ${uid}`);
+      })
+      .catch(e => { btn.disabled = false; btn.textContent = '+ Mark'; showToast(e.message, true); });
+  }
+
+  function deleteRecord(id, rowEl) {
+    if (!id) return;
+    confirmAction(`Delete attendance record #${id}?`, () => {
+      api(`/api/attendance/delete?id=${encodeURIComponent(id)}`)
+        .then(() => {
+          rowEl.style.transition = 'opacity .25s';
+          rowEl.style.opacity = '0';
+          setTimeout(() => { rowEl.remove(); refreshSummary(); }, 260);
+          showToast('Record deleted.');
+        })
+        .catch(e => showToast(e.message, true));
+    });
+  }
+
+  function refreshSummary() {
+    const today = getTodayName();
+    api(`/api/attendance/summary?c=${g_class}&date=${today}`)
+      .then(s => renderStats(s.total||0, s.present||0, s.absent||0))
+      .catch(() => {});
+  }
+
+  function appendLogGroup(group) {
+    const container = document.getElementById('log-groups');
+    if (!container) return;
+    const date = group.date || getTodayName();
+    const records = (group.records || []).map(rec => normalizeLogRecord(rec, date));
+    records.sort((a,b) => String(b.time||'').localeCompare(String(a.time||'')));
+
+    const today = getTodayName();
+    const pCnt = records.filter(r => (r.status||'present')==='present').length;
+    const aCnt = records.filter(r => r.status==='absent').length;
+
+    const tbodyHtml = records.map((r, idx) => {
+      const statusHtml = (r.status||'present')==='present' ? `<span class="status-present">● Present</span>` : `<span class="status-absent">● Absent</span>`;
+      const nameCell = r.uid ? `<a href="/student-detail.html?uid=${encodeURIComponent(r.uid)}" style="color:var(--text);text-decoration:none">${esc(r.name||'—')}</a>` : esc(r.name||'—');
+      return `<tr data-name="${esc(r.name||'')}" data-uid="${esc(r.uid||'')}" data-status="${esc(r.status||'present')}" data-id="${esc(r.id||'')}">` +
+        `<td class="num-col">${idx+1}</td>` +
+        `<td>${nameCell}</td>` +
+        `<td><span class="badge badge-grey">${esc(r.roll||'—')}</span></td>` +
+        `<td><span class="badge badge-green" style="font-size:.64rem">${esc(r.uid||'—')}</span></td>` +
+        `<td><span style="color:var(--muted);font-size:.82rem">${esc(r.batch||'—')}</span></td>` +
+        `<td><span style="color:var(--text);font-size:.83rem">${esc(r.time||'—')}</span></td>` +
+        `<td>${statusHtml}</td>` +
+        `<td>${r.id ? `<button class="btn-sm btn btn-outline ajax-del-btn" style="padding:.18rem .45rem;font-size:.62rem;color:var(--danger);border-color:var(--danger)" data-id="${esc(r.id)}">✕</button>` : ''}</td></tr>`;
+    }).join('');
+
+    const groupEl = document.createElement('div');
+    groupEl.className = 'date-group collapsed';
+    groupEl.innerHTML = 
+      `<div class="date-group-hdr">` +
+        `<span class="dg-date">${esc(date)}${date===today ? ` <span class="today-tag">Today</span>` : ''}</span>` +
+        (pCnt ? `<span style="font-size:.66rem;color:var(--accent);margin-left:.4rem">&#9679; ${pCnt}P</span>` : '') +
+        (aCnt ? `<span style="font-size:.66rem;color:var(--danger);margin-left:.3rem">&#9679; ${aCnt}A</span>` : '') +
+        `<span class="dg-cnt">${records.length} record${records.length===1?'':'s'}</span>` +
+        `<span class="dg-arr">&#9660;</span>` +
+      `</div>` +
+      `<div class="date-group-body"><table><thead><tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th><th></th></tr></thead><tbody>${tbodyHtml}</tbody></table></div>`;
+
+    const hdr = groupEl.querySelector('.date-group-hdr');
+    if (hdr) hdr.addEventListener('click', () => groupEl.classList.toggle('collapsed'));
+
+    groupEl.querySelectorAll('.ajax-del-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        deleteRecord(btn.dataset.id, btn.closest('tr'));
+      });
+    });
+
+    container.appendChild(groupEl);
+  }
+
+  function normalizeLogRecord(item, date) {
+    if (!item) return {name:'',roll:'',uid:'',batch:'',time:'',status:'present',id:'',date:date||''};
+    return {
+      name: item.name||item.nm||'', roll: item.roll||item.rl||'', uid: item.uid||item.card_uid||'',
+      batch: item.batch||item.batchtime||item.bt||'', time: item.time||item.entry_time||'',
+      status: item.status||'present', id: item.id||'', date: item.date||date||''
+    };
+  }
+
+  function filterLog() {
+    const q = (document.getElementById('log-search')?.value || '').toLowerCase().trim();
+    document.querySelectorAll('#log-groups .date-group').forEach(grp => {
+      let vis = 0;
+      grp.querySelectorAll('tbody tr[data-name]').forEach(row => {
+        const match = !q || [row.dataset.name, row.dataset.uid].some(v => String(v||'').toLowerCase().includes(q));
+        row.style.display = match ? '' : 'none';
+        if (match) vis++;
+      });
+      grp.style.display = vis ? '' : 'none';
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('attendance');
+    const today = getTodayName();
+    document.getElementById('page-subtitle').textContent = 'Loading…';
+
+    document.querySelectorAll('#today-filter-bar .ftab').forEach(btn => {
+      btn.addEventListener('click', () => setActiveFilter(btn.dataset.filter));
+    });
+
+    getSession().then(s => {
+      if (!s.class) { location.href = '/select-class.html'; return; }
       g_class = s.class;
-      document.getElementById('page-subtitle').textContent = 'Class '+g_class+' · '+today;
+      document.getElementById('page-subtitle').textContent = `Class ${g_class} · ${today}`;
 
       document.getElementById('scan-bar').style.display = 'flex';
       startRFIDPoll();
@@ -292,401 +524,8 @@
       loadData();
       initTabs(['today-section','log-section'], 'today-section');
       setActiveFilter('all');
-    }).catch(function(){ location.href='/login.html'; });
+    }).catch(() => location.href = '/login.html');
   });
-
-  /* ─── RFID fast polling (1.5 s — replaces broken SSE) ── */
-  function startRFIDPoll(){
-    var dot   = document.getElementById('scan-dot');
-    var label = document.getElementById('scan-label');
-    var evEl  = document.getElementById('scan-event');
-    if(!dot||!label||!evEl) return;
-
-    dot.className     = 'scan-dot connected';
-    label.textContent = 'RFID Live';
-    var lastSeq = 0;
-
-    function poll(){
-      fetch('/api/rfid-events',{credentials:'same-origin'})
-        .then(function(r){ return r.ok ? r.json() : null; })
-        .then(function(d){
-          if(!d) return;
-          dot.className     = 'scan-dot connected';
-          label.textContent = 'RFID Live';
-
-          if(d.seq && d.seq!==lastSeq){
-            lastSeq = d.seq;
-            dot.className = 'scan-dot scanning';
-            setTimeout(function(){ dot.className='scan-dot connected'; }, 500);
-
-            if(d.status==='registered'){
-              evEl.className   = 'scan-event';
-              evEl.textContent = '✓ '+(d.name||d.uid)+' — '+(d.time||'');
-              // Optimistic: mark the student present in the local state
-              var scannedUid = String(d.uid || '').trim();
-              var found = false;
-              for (var j = 0; j < g_todayRows.length; j++) {
-                if (String(g_todayRows[j].uid || '').trim() === scannedUid) {
-                  g_todayRows[j].status = 'present';
-                  g_todayRows[j].time   = d.time || '';
-                  found = true;
-                  break;
-                }
-              }
-              // Update stats counter immediately
-              var pCnt = g_todayRows.filter(function(r){ return r.status==='present'; }).length;
-              var aCnt = g_todayRows.filter(function(r){ return r.status==='absent';  }).length;
-              renderStats(g_todayRows.length, pCnt, aCnt);
-              filterToday(); // re-render table from local state
-              // Background reconciliation: full reload 4 s later
-              clearTimeout(window._rfidReloadTimer);
-              window._rfidReloadTimer = setTimeout(loadData, 4000);
-            } else if(d.status==='already'){
-              evEl.className   = 'scan-event';
-              evEl.textContent = '↩ Already: '+(d.name||d.uid);
-            } else if(d.status==='unknown'){
-              evEl.className   = 'scan-event err';
-              evEl.textContent = '? Unknown: '+d.uid;
-            }
-
-            clearTimeout(evEl._t);
-            evEl._t = setTimeout(function(){ evEl.textContent=''; evEl.className='scan-event'; }, 5000);
-          }
-        })
-        .catch(function(){
-          dot.className     = 'scan-dot';
-          label.textContent = 'Reconnecting…';
-        });
-    }
-
-    poll();
-    var timer = setInterval(poll, 1500);   /* 1.5 s — fast enough for real-time feel */
-    g_sseHandle = { stop: function(){ clearInterval(timer); } };
-  }
-
-  /* ─── Load data ──────────────────────────────────────── */
-  function loadData() {
-    var gen = ++g_loadGen;   /* this call's unique stamp — stale callbacks will see gen !== g_loadGen */
-
-    var todayBox = document.getElementById('today-tbody');
-    var logBox   = document.getElementById('log-groups');
-    if (todayBox) todayBox.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
-    if (logBox)   logBox.innerHTML   = "<div class='empty-note'>Loading…</div>";
-
-    g_todayRows = [];
-    var firstLogGroup  = true;
-
-    var url = '/api/attendance?c=' + g_class;
-
-    apiStreamAttendance(
-      url,
-
-      /* onHeader */
-      function (header) {
-        if (gen !== g_loadGen) return;
-        var st = header.stats || {};
-        renderStats(st.total || 0, st.present || 0, st.absent || 0);
-      },
-
-      /* onTodayItem — append one row at a time as it arrives from the server,
-         exactly like students.html does — no full tbody rebuild per item.     */
-      function (item) {
-        if (gen !== g_loadGen) return;
-        var r = normalizeTodayItem(item);
-        g_todayRows.push(r);
-
-        /* First row: clear the "Loading…" placeholder so the table appears */
-        if (g_todayRows.length === 1 && todayBox) {
-          todayBox.innerHTML = '';
-        }
-
-        /* Append this row directly — no full re-render needed */
-        if (todayBox) {
-          todayBox.appendChild(buildTodayRow(r, g_todayRows.length));
-        }
-      },
-
-      /* onLogItem */
-      function (group) {
-        if (gen !== g_loadGen) return;
-        if (firstLogGroup) {
-          if (logBox) logBox.innerHTML = '';
-          firstLogGroup = false;
-        }
-        appendLogGroup(group);
-      },
-
-      /* onDone */
-      function () {
-        if (gen !== g_loadGen) return;
-        if (g_todayRows.length === 0 && todayBox) {
-          todayBox.innerHTML = "<tr><td colspan='7' class='empty'>No students found.</td></tr>";
-        } else {
-          filterToday();
-        }
-        if (firstLogGroup && logBox) {
-          logBox.innerHTML = "<div class='empty-note'>No attendance records yet.</div>";
-        }
-        initGroups();
-      },
-
-      /* onError */
-      function (e) {
-        if (gen !== g_loadGen) return;
-        if (todayBox) todayBox.innerHTML =
-          '<tr><td colspan="7" class="empty">Error: ' + esc(e.message) + '</td></tr>';
-        if (logBox) logBox.innerHTML =
-          "<div class='empty-note'>Error: " + esc(e.message) + '</div>';
-      }
-    );
-  }
-
-  /* ─── AJAX: mark a student present ───────────────────────────────
-     POST /api/attendance/mark  { uid, date, time }
-     On success the row status badge flips immediately (optimistic UI);
-     the stat bar is also refreshed so the counts stay in sync.         */
-  function markPresent(uid, btn) {
-    if (!uid) return;
-    var today = localDateStr(new Date());
-    var now   = new Date();
-    var hhmm  = pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ':' + pad2(now.getSeconds());
-
-    btn.disabled    = true;
-    btn.textContent = '…';
-
-    api('/api/attendance/mark', 'POST', { uid: uid, date: today, time: hhmm })
-      .then(function () {
-        /* Optimistic: flip the row in g_todayRows and re-render */
-        g_todayRows.forEach(function (r) {
-          if (r.uid === uid) { r.status = 'present'; r.time = hhmm; }
-        });
-        filterToday();           /* re-renders table */
-        refreshSummary();        /* update stat bar counts */
-        showToast('✓ Marked present: ' + uid);
-      })
-      .catch(function (e) {
-        btn.disabled    = false;
-        btn.textContent = '+ Mark';
-        showToast(e.message, true);
-      });
-  }
-
-  /* ─── AJAX: delete a log record ─────────────────────────────────
-     GET /api/attendance/delete?id=N
-     The row fades out and is removed from the DOM immediately.         */
-  function deleteRecord(id, rowEl) {
-    if (!id) return;
-    confirmAction('Delete attendance record #' + id + '?', function () {
-      api('/api/attendance/delete?id=' + encodeURIComponent(id))
-        .then(function () {
-          rowEl.style.transition = 'opacity .25s';
-          rowEl.style.opacity    = '0';
-          setTimeout(function () { rowEl.remove(); refreshSummary(); }, 260);
-          showToast('Record deleted.');
-        })
-        .catch(function (e) { showToast(e.message, true); });
-    });
-  }
-
-  /* ─── AJAX: refresh stat-bar summary without a full reload ───────
-     GET /api/attendance/summary?c=N&date=YYYY-MM-DD                   */
-  function refreshSummary() {
-    var today = localDateStr(new Date());
-    api('/api/attendance/summary?c=' + g_class + '&date=' + today)
-      .then(function (s) {
-        renderStats(s.total || 0, s.present || 0, s.absent || 0);
-      })
-      .catch(function () {});   /* best-effort — silently ignore */
-  }
-
-
-
-  /* ─── Build a single TR for the today table ─────────────────────────
-     Extracted so both streaming (one-by-one append) and filterToday()
-     (full re-render on sort/search) share the exact same row markup.   */
-  function buildTodayRow(r, rowNum) {
-    var statusHtml = r.status === 'present'
-      ? "<span class='status-present'>● Present</span>"
-      : "<span class='status-absent'>● Absent</span>";
-
-    var nameLink = r.uid
-      ? "<a href='/student-detail.html?uid=" + encodeURIComponent(r.uid) +
-        "' style='color:var(--text);text-decoration:none'>" + esc(r.name || '—') + "</a>"
-      : esc(r.name || '—');
-
-    var actionCell = (r.uid && r.status === 'absent')
-      ? '<td><button class="btn-sm btn btn-outline ajax-mark-btn" ' +
-        'style="padding:.18rem .5rem;font-size:.62rem" ' +
-        'data-uid="' + esc(r.uid) + '">+ Mark</button></td>'
-      : '<td></td>';
-
-    var tr = document.createElement('tr');
-    tr.className = 'clickable';
-    if (r.uid) {
-      tr.addEventListener('click', function (e) {
-        if (!e.target.closest('a') && !e.target.closest('button'))
-          location.href = '/student-detail.html?uid=' + encodeURIComponent(r.uid);
-      });
-    }
-    tr.innerHTML =
-      "<td class='num-col'>" + rowNum + "</td>" +
-      "<td>" + nameLink + "</td>" +
-      "<td><span class='badge badge-grey'>"  + esc(r.roll  || '—') + "</span></td>" +
-      "<td><span class='badge badge-green' style='font-size:.64rem'>" + esc(r.uid || '—') + "</span></td>" +
-      "<td><span style='color:var(--muted);font-size:.82rem'>" + esc(r.batch || '—') + "</span></td>" +
-      "<td>" + statusHtml + "</td>" +
-      "<td>" + (r.time
-        ? "<span style='color:var(--text);font-size:.83rem'>"  + esc(r.time) + "</span>"
-        : "<span style='color:var(--dim);font-size:.78rem'>—</span>") + "</td>" +
-      actionCell;
-
-    /* Wire mark button immediately after building so it's live when appended */
-    if (r.uid && r.status === 'absent') {
-      var markBtn = tr.querySelector('.ajax-mark-btn');
-      if (markBtn) {
-        (function (uid, btn) {
-          btn.addEventListener('click', function (e) {
-            e.stopPropagation(); markPresent(uid, btn);
-          });
-        })(r.uid, markBtn);
-      }
-    }
-    return tr;
-  }
-
-  function filterToday(){
-    var searchEl = document.getElementById('today-search');
-    var q = searchEl ? searchEl.value.toLowerCase() : '';
-
-    var rows = g_todayRows.filter(function(r){
-      if(g_todayFilter!=='all' && r.status!==g_todayFilter) return false;
-      if(!q) return true;
-      return [r.name,r.roll,r.uid,r.batch,r.time,r.status].some(function(v){
-        return String(v||'').toLowerCase().includes(q);
-      });
-    });
-
-    /* Present first, then alphabetical */
-    rows.sort(function(a,b){
-      if(a.status!==b.status) return a.status==='present' ? -1 : 1;
-      return String(a.name||'').localeCompare(String(b.name||''));
-    });
-
-    var tbody = document.getElementById('today-tbody');
-    if(!tbody) return;
-    tbody.innerHTML = '';
-
-    if(!rows.length){
-      tbody.innerHTML = "<tr><td colspan='7' class='empty'>No results</td></tr>";
-      return;
-    }
-
-    rows.forEach(function(r, i){
-      tbody.appendChild(buildTodayRow(r, i + 1));
-    });
-  }
-
-  /* ─── Render log tab ─────────────────────────────────────
-     Backend: log = [{date, present_count, absent_count, records:[{id,uid,name,roll,batch,time,status}]}, …]
-     Old bug: log was treated as a flat record array — each date-group object was
-              passed to normalizeLogRecord() which found no name/uid, so nothing rendered.
-     Fix: iterate log[], extract date + records[] from each group. */
-
-  /* ── appendLogGroup — renders a single date-group and appends it ──
-   * Used during streaming so each group appears as soon as it arrives. */
-  function appendLogGroup(group) {
-    var container = document.getElementById('log-groups');
-    if (!container) return;
-
-    var date = group.date || getTodayName();
-    var records = (group.records || []).map(function (rec) {
-      return normalizeLogRecord(rec, date);
-    });
-    records.sort(function (a, b) {
-      return String(b.time || '').localeCompare(String(a.time || ''));
-    });
-
-    var today = getTodayName();
-    var pCnt = records.filter(function (r) { return (r.status || 'present') === 'present'; }).length;
-    var aCnt = records.filter(function (r) { return r.status === 'absent'; }).length;
-
-    var tableHead = '<tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th><th></th></tr>';
-
-    var tbodyHtml = records.map(function (r, idx) {
-      var statusHtml = (r.status || 'present') === 'present'
-        ? "<span class='status-present'>● Present</span>"
-        : "<span class='status-absent'>● Absent</span>";
-      var nameCell = r.uid
-        ? "<a href='/student-detail.html?uid=" + encodeURIComponent(r.uid) +
-          "' style='color:var(--text);text-decoration:none'>" +
-          esc(r.name || '—') + '</a>'
-        : esc(r.name || '—');
-
-      return "<tr data-name='" + esc(r.name || '') + "' data-uid='" + esc(r.uid || '') +
-        "' data-status='" + esc(r.status || 'present') + "' data-id='" + esc(r.id || '') + "'>" +
-        "<td class='num-col'>" + (idx + 1) + '</td>' +
-        '<td>' + nameCell + '</td>' +
-        "<td><span class='badge badge-grey'>" + esc(r.roll || '—') + '</span></td>' +
-        "<td><span class='badge badge-green' style='font-size:.64rem'>" + esc(r.uid || '—') + '</span></td>' +
-        "<td><span style='color:var(--muted);font-size:.82rem'>" + esc(r.batch || '—') + '</span></td>' +
-        "<td><span style='color:var(--text);font-size:.83rem'>" + esc(r.time || '—') + '</span></td>' +
-        '<td>' + statusHtml + '</td>' +
-        "<td>" + (r.id
-          ? "<button class='btn-sm btn btn-outline ajax-del-btn' " +
-            "style='padding:.18rem .45rem;font-size:.62rem;color:var(--danger);border-color:var(--danger)' " +
-            "data-id='" + esc(r.id) + "'>✕</button>"
-          : '') + '</td>' +
-        '</tr>';
-    }).join('');
-
-    var groupEl = document.createElement('div');
-    groupEl.className = 'date-group collapsed';
-    groupEl.innerHTML =
-      "<div class='date-group-hdr'>" +
-        "<span class='dg-date'>" + esc(date) +
-          (date === today ? " <span class='today-tag'>Today</span>" : '') +
-        '</span>' +
-        (pCnt ? "<span style='font-size:.66rem;color:var(--accent);margin-left:.4rem'>&#9679; " + pCnt + 'P</span>' : '') +
-        (aCnt ? "<span style='font-size:.66rem;color:var(--danger);margin-left:.3rem'>&#9679; " + aCnt + 'A</span>' : '') +
-        "<span class='dg-cnt'>" + records.length + ' record' + (records.length === 1 ? '' : 's') + '</span>' +
-        "<span class='dg-arr'>&#9660;</span>" +
-      '</div>' +
-      "<div class='date-group-body'>" +
-        '<table><thead>' + tableHead + '</thead><tbody>' + tbodyHtml + '</tbody></table>' +
-      '</div>';
-
-    container.appendChild(groupEl);
-
-    /* Wire AJAX delete buttons in this group */
-    groupEl.querySelectorAll('.ajax-del-btn').forEach(function (btn) {
-      btn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var rowEl = btn.closest('tr');
-        deleteRecord(btn.dataset.id, rowEl);
-      });
-    });
-  }
-
-  // FIX-08: Deleted dead renderLog() — it was never called; the page uses
-  // appendLogGroup() + streaming instead. initGroups() is now called in onDone (FIX-05).
-
-  function filterLog(){
-    var searchEl = document.getElementById('log-search');
-    var q = searchEl ? searchEl.value.toLowerCase() : '';
-    document.querySelectorAll('#log-groups .date-group').forEach(function(grp){
-      var rows = grp.querySelectorAll('tbody tr[data-name]');
-      var vis = 0;
-      rows.forEach(function(r){
-        var show = !q || [r.dataset.name,r.dataset.uid].some(function(v){
-          return String(v||'').toLowerCase().includes(q);
-        });
-        r.style.display = show ? '' : 'none';
-        if(show) vis++;
-      });
-      grp.style.display = vis ? '' : 'none';
-    });
-  }
-
 </script>
 </body>
 </html>
