@@ -148,7 +148,7 @@ esp_err_t api_students_edit_post(httpd_req_t *req)
 }
 
 /* GET /api/students/archive?uid= */
-esp_err_t api_students_archive_get(httpd_req_t *req)
+esp_err_t api_students_archive_post(httpd_req_t *req)
 {
     if (!auth_check_with_class(req)) return http_send_err(req, 403, "no_class");
     char uid[32] = {0};
@@ -159,7 +159,7 @@ esp_err_t api_students_archive_get(httpd_req_t *req)
 }
 
 /* GET /api/students/restore?uid= */
-esp_err_t api_students_restore_get(httpd_req_t *req)
+esp_err_t api_students_restore_post(httpd_req_t *req)
 {
     if (!auth_check_with_class(req)) return http_send_err(req, 403, "no_class");
     char uid[32] = {0};
@@ -170,7 +170,7 @@ esp_err_t api_students_restore_get(httpd_req_t *req)
 }
 
 /* GET /api/students/delete?uid= */
-esp_err_t api_students_delete_get(httpd_req_t *req)
+esp_err_t api_students_delete_handler(httpd_req_t *req)
 {
     if (!auth_check_with_class(req)) return http_send_err(req, 403, "no_class");
     char uid[32] = {0};

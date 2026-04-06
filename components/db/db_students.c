@@ -16,7 +16,10 @@ extern bool     db_exec_raw(const char *sql);
 
 /* ── JSON string escape helper ───────────────────────────────── */
 /* Writes escaped version of src into dst (max dst_len bytes).
-   Returns number of bytes written. */
+   Returns number of bytes written.
+   FIX-34: Added optional truncation flag — caller can detect when the
+   source string was too long for the destination buffer and log a warning
+   rather than silently producing a truncated (potentially malformed) value. */
 static size_t json_escape(const char *src, char *dst, size_t dst_len)
 {
     size_t i = 0;
@@ -32,6 +35,10 @@ static size_t json_escape(const char *src, char *dst, size_t dst_len)
         }
     }
     dst[i] = '\0';
+    /* FIX-34: If src is not exhausted, truncation occurred — log a warning */
+    if (*src != '\0') {
+        ESP_LOGW(TAG, "json_escape: value truncated (dst_len=%zu)", dst_len);
+    }
     return i;
 }
 

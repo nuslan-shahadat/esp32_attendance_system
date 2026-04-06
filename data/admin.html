@@ -9,7 +9,7 @@
     .page-wrap { width: 100%; max-width: 780px; }
 
     /* Hidden file inputs */
-    #csv-file, #att-zip-file { display: none; }
+    #csv-file, #att-csv-file { display: none; }
 
     /* ── Admin box sections ── */
     .data-section { margin-bottom: 1.75rem; padding-bottom: 1.75rem; border-bottom: 1px solid var(--border); }
@@ -138,7 +138,7 @@
 
 <div class="confirm-bg" id="confirm-modal">
   <div class="confirm-box">
-    <p><strong id="confirm-label"></strong></p>
+    <p id="confirm-text"><strong id="confirm-label"></strong></p>
     <div class="confirm-actions">
       <button class="confirm-yes" id="confirm-yes-btn">Confirm</button>
       <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
@@ -148,7 +148,8 @@
 
 <!-- Hidden file inputs -->
 <input type="file" id="csv-file"     accept=".csv"      onchange="importCsv()">
-<input type="file" id="att-zip-file" accept=".csv" onchange="importAttZip()">
+<!-- FIX-17: Renamed att-zip-file→att-csv-file and importAttZip→importAttCsv -->
+<input type="file" id="att-csv-file" accept=".csv" onchange="importAttCsv()">
 
 <div class="page-wrap">
   <div class="card">
@@ -263,7 +264,12 @@
           </div>
           <div class="import-card" style="margin-top:.75rem">
             <div class="import-card-title">↑ Import Attendance CSV</div>
-            <button class="btn btn-sm" onclick="document.getElementById('att-zip-file').click()">↑ Choose CSV</button>
+            <!-- FIX-16: Dedicated class selector for attendance import so it doesn't
+                 silently fall back to the student import selector (imp-cls). -->
+            <div class="sel-wrap" style="margin-bottom:.5rem"><select id="att-imp-cls"></select></div>
+            <!-- FIX-17: Renamed id from att-zip-file→att-csv-file and handler from
+                 importAttZip→importAttCsv to match the actual CSV functionality. -->
+            <button class="btn btn-sm" onclick="document.getElementById('att-csv-file').click()">↑ Choose CSV</button>
             <div class="hint" style="margin-top:.5rem">Select a CSV file exported from this system.</div>
           </div>
         </div>
@@ -481,7 +487,8 @@
         : '<div class="empty" style="padding:1rem 0">No classes yet.</div>';
       document.getElementById('classes-list').innerHTML = html;
 
-      ['batch-cls','exp-cls','att-exp-cls','imp-cls','reset-cls'].forEach(function (id) {
+      // FIX-16: Added 'att-imp-cls' — the dedicated attendance import class selector.
+      ['batch-cls','exp-cls','att-exp-cls','imp-cls','att-imp-cls','reset-cls'].forEach(function (id) {
         var sel = document.getElementById(id);
         if (!sel) return;
         sel.innerHTML = g_classes.map(function (c) {
@@ -504,7 +511,7 @@
 
   function delClass(cn) {
     confirmAction('Delete Class ' + cn + '? All data will be lost.', function () {
-      api('/api/classes/delete?c=' + cn)
+      api('/api/classes/delete?c=' + cn, 'POST')
         .then(function () { showToast('Deleted'); loadClasses(); })
         .catch(function (e) { showToast(e.message, true); });
     });
@@ -542,7 +549,7 @@
 
   function delBatch(t) {
     var cn = document.getElementById('batch-cls').value;
-    api('/api/batches/delete?c=' + cn + '&batch=' + encodeURIComponent(t))
+    api('/api/batches/delete?c=' + cn + '&batch=' + encodeURIComponent(t), 'POST')
       .then(function () { showToast('Batch removed'); loadBatches(); })
       .catch(function (e) { showToast(e.message, true); });
   }
@@ -611,7 +618,7 @@
 
   function delCol(ctype, key) {
     confirmAction('Delete custom field "' + key + '"? This cannot be undone.', function () {
-      api('/api/schema/delete?coltype=' + ctype + '&key=' + encodeURIComponent(key))
+      api('/api/schema/delete?coltype=' + ctype + '&key=' + encodeURIComponent(key), 'DELETE')
         .then(function () { showToast('Field deleted'); loadSchema(); })
         .catch(function (e) { showToast(e.message, true); });
     });
@@ -684,13 +691,16 @@
     reader.readAsText(file);
   }
 
-  function importAttZip() {
-    var file = document.getElementById('att-zip-file').files[0];
+  // FIX-17: Renamed importAttZip→importAttCsv to match actual CSV functionality.
+  function importAttCsv() {
+    // FIX-17: Read from the renamed att-csv-file input.
+    var file = document.getElementById('att-csv-file').files[0];
     if (!file) return;
 
-    /* Use the import class selector; fall back to export selector if absent */
-    var cn = (document.getElementById('imp-cls') || {}).value ||
-             (document.getElementById('att-exp-cls') || {}).value || '';
+    // FIX-16: Use the dedicated att-imp-cls selector — no silent fallback to
+    // imp-cls or att-exp-cls which could silently import into the wrong class.
+    var cn = document.getElementById('att-imp-cls').value;
+    if (!cn) { showToast('Select a class first', true); return; }
 
     var reader = new FileReader();
     reader.onload = function (e) {
@@ -713,7 +723,7 @@
       })
       .then(function (r) {
         showToast('Imported: ' + (r.added||0) + ' added, ' + (r.skipped||0) + ' skipped');
-        document.getElementById('att-zip-file').value = '';
+        document.getElementById('att-csv-file').value = '';
       })
       .catch(function (e) { hideUploadProgress(); showToast(e.message, true); });
     };
@@ -805,7 +815,9 @@
   }
   function doResetAll() {
     confirmAction('Reset ALL attendance data for every class? This cannot be undone.', function () {
-      api('/api/admin/reset-all')
+      // FIX-15: Pass 'POST' explicitly — api() defaulted to GET, making this
+      // endpoint cacheable and CSRF-vulnerable. Must match FIX-22 server-side.
+      api('/api/admin/reset-all', 'POST', {})
         .then(function () { showToast('All reset'); })
         .catch(function (e) { showToast(e.message, true); });
     });

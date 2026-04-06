@@ -6,7 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-static const char *TAG = "api_classes";
+static const char *TAG __attribute__((unused)) = "api_classes";
 
 /* GET /api/classes */
 esp_err_t api_classes_get(httpd_req_t *req)
@@ -36,7 +36,7 @@ esp_err_t api_classes_add_post(httpd_req_t *req)
 }
 
 /* GET /api/classes/delete?c=7 */
-esp_err_t api_classes_delete_get(httpd_req_t *req)
+esp_err_t api_classes_delete_post(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     char buf[8] = {0};
@@ -102,7 +102,7 @@ esp_err_t api_batches_add_post(httpd_req_t *req)
 }
 
 /* GET /api/batches/delete?c=7&batch=11:00 */
-esp_err_t api_batches_delete_get(httpd_req_t *req)
+esp_err_t api_batches_delete_post(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     char cbuf[8]={0}, bbuf[16]={0};

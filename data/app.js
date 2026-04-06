@@ -28,17 +28,15 @@
 // ── Font / Color Customization ─────────────────────────────────────
 (function () {
   // System-only font stacks — no external network requests (safe in AP mode)
+  // FIX-02: Each entry now has a genuinely distinct font stack instead of
+  // all resolving to the same Courier New fallback.
   const FONTS = {
-    'jetbrains':   { name: 'JetBrains Mono',    stack: "'Courier New', Courier, monospace" },
-    'firacode':    { name: 'Fira Code',          stack: "'Courier New', Courier, monospace" },
-    'ibmplex':     { name: 'IBM Plex Mono',      stack: "'Courier New', Courier, monospace" },
-    'spacemono':   { name: 'Space Mono',         stack: "'Courier New', Courier, monospace" },
-    'robotomono':  { name: 'Roboto Mono',        stack: "'Courier New', Courier, monospace" },
-    'sourcecode':  { name: 'Source Code Pro',    stack: "'Courier New', Courier, monospace" },
-    'dmmono':      { name: 'DM Mono',            stack: "'Courier New', Courier, monospace" },
-    'inconsolata': { name: 'Inconsolata',        stack: "'Courier New', Courier, monospace" },
-    'courierprime':{ name: 'Courier Prime',      stack: "'Courier New', Courier, monospace" },
-    'azeret':      { name: 'Azeret Mono',        stack: "'Courier New', Courier, monospace" },
+    'default':    { name: 'Default Mono',   stack: "'Courier New', Courier, monospace" },
+    'consolas':   { name: 'Consolas',       stack: "Consolas, 'Courier New', monospace" },
+    'menlo':      { name: 'Menlo',          stack: "Menlo, Monaco, 'Courier New', monospace" },
+    'monaco':     { name: 'Monaco',         stack: "Monaco, 'Courier New', monospace" },
+    'sfmono':     { name: 'SF Mono',        stack: "'SF Mono', Menlo, monospace" },
+    'lucida':     { name: 'Lucida Console', stack: "'Lucida Console', 'Courier New', monospace" },
   };
   window.FONTS = FONTS;
 
@@ -69,12 +67,55 @@
   window.toggleTheme = function () { _origToggle(); loadAppearance(); };
 })();
 
-// ── Session cache — one request per page, shared between buildNavbar and page code ──
+// ── Session cache — sessionStorage-backed, one network hit per browser session ──
 (function () {
   var _promise = null;
-  window.getSession = function () {
-    if (!_promise) _promise = api('/api/session');
+  var SESS_KEY = 'att_sess_v1';
+
+  window.getSession = function (force) {
+    if (!force) {
+      try {
+        var c = sessionStorage.getItem(SESS_KEY);
+        if (c) { if (!_promise) _promise = Promise.resolve(JSON.parse(c)); return _promise; }
+      } catch (e) {}
+    }
+    _promise = null;
+    _promise = api('/api/session').then(function (s) {
+      try { sessionStorage.setItem(SESS_KEY, JSON.stringify(s)); } catch (e) {}
+      return s;
+    });
     return _promise;
+  };
+
+  window.invalidateSession = function () {
+    _promise = null;
+    try { sessionStorage.removeItem(SESS_KEY); } catch (e) {}
+  };
+})();
+
+// ── Classes cache — sessionStorage-backed ─────────────────────────
+(function () {
+  var _promise = null;
+  var CLS_KEY = 'att_classes_v1';
+
+  window.getClasses = function (force) {
+    if (!force) {
+      try {
+        var c = sessionStorage.getItem(CLS_KEY);
+        if (c) { if (!_promise) _promise = Promise.resolve(JSON.parse(c)); return _promise; }
+      } catch (e) {}
+    }
+    _promise = null;
+    _promise = api('/api/classes').then(function (classes) {
+      try { sessionStorage.setItem(CLS_KEY, JSON.stringify(classes)); } catch (e) {}
+      return classes;
+    });
+    return _promise;
+  };
+
+  window.invalidateClasses = function () {
+    _promise = null;
+    try { sessionStorage.removeItem(CLS_KEY); } catch (e) {}
   };
 })();
 
@@ -104,17 +145,10 @@
 })();
 
 // ── Logout beacon on tab close ─────────────────────────────────────
-window.addEventListener('pagehide', function (e) {
-  if (e.persisted) return;
-  if (sessionStorage.getItem('reloading') === '1') {
-    sessionStorage.removeItem('reloading');
-    return;
-  }
-  navigator.sendBeacon('/api/logout');
-});
-window.addEventListener('beforeunload', function () {
-  sessionStorage.setItem('reloading', '1');
-});
+// NOTE: Auto-logout on visibilitychange was removed because the event
+// fires on every page navigation, which destroyed the session whenever
+// the user moved between pages (login → select-class → attendance).
+// Session expiry is handled server-side with a 30-minute timeout.
 
 // ── Toast ──────────────────────────────────────────────────────────
 window.showToast = function (msg, isError) {
@@ -133,12 +167,13 @@ window.showToast = function (msg, isError) {
 };
 
 // ── Confirm-delete modal ───────────────────────────────────────────
+// FIX-07: Use a fully dynamic text element so the prefix is not hardcoded.
 window.confirmAction = function (label, onConfirm) {
   const bg      = document.getElementById('confirm-modal');
-  const labelEl = document.getElementById('confirm-label');
+  const textEl  = document.getElementById('confirm-text');
   const yesBtn  = document.getElementById('confirm-yes-btn');
-  if (!bg || !labelEl || !yesBtn) return;
-  labelEl.textContent = label;
+  if (!bg || !textEl || !yesBtn) return;
+  textEl.textContent = label;
   yesBtn.onclick = function () {
     bg.classList.remove('show');
     onConfirm();
@@ -146,8 +181,14 @@ window.confirmAction = function (label, onConfirm) {
   bg.classList.add('show');
 };
 
-window.confirmDel   = function (url, label) {
-  window.confirmAction(label, function () { window.location.href = url; });
+// FIX-03: Use api(url, 'DELETE') instead of window.location.href (which
+// issued a GET against a destructive endpoint and had no error handling).
+window.confirmDel = function (url, label, onDone) {
+  window.confirmAction(label, function () {
+    api(url, 'DELETE')
+      .then(function () { if (onDone) onDone(); })
+      .catch(function (e) { showToast(e.message, true); });
+  });
 };
 window.confirmFetch = function (url, label, method, body, onDone) {
   window.confirmAction(label, function () {
@@ -171,9 +212,7 @@ document.addEventListener('DOMContentLoaded', function () {
 window.initTabs = function (tabIds, defaultTab, containerEl) {
   // containerEl: optional DOM element to scope button search to
   const scope = containerEl || document;
-  const bar   = typeof containerEl === 'string'
-    ? document.getElementById(containerEl)
-    : containerEl;
+  // FIX-04: Removed dead `bar` variable (was assigned but never used).
 
   // Find the tab-bar that owns these tabs' buttons
   // Get all buttons that have data-tab matching one of our tabIds
@@ -461,6 +500,84 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogItem, on
     }).catch(onError);
 };
 
+/* ── apiStreamReport — streams { class_days, min_pct, rows:[{...},...] } ── */
+window.apiStreamReport = function (url, onHeader, onRow, onDone, onError) {
+  fetch(url, { headers: { 'Content-Type': 'application/json' } })
+    .then(function (r) {
+      if (r.status === 401) { window.location.href = '/login.html'; return; }
+      if (r.status === 403) { window.location.href = '/select-class.html'; return; }
+      if (!r.ok) {
+        r.json().catch(function () { return {}; }).then(function (j) {
+          onError(new Error(j.error || 'HTTP ' + r.status));
+        });
+        return;
+      }
+
+      var reader = r.body.getReader();
+      var dec    = new TextDecoder();
+      var buf    = '';
+      var phase  = 'header'; /* 'header' → 'rows' */
+      var pos = 0, depth = 0, objStart = -1, inStr = false, esc = false;
+
+      function resetExtractor() {
+        pos = 0; depth = 0; objStart = -1; inStr = false; esc = false;
+      }
+
+      function processBuffer() {
+        /* ── Phase: header — wait for "rows":[ marker ── */
+        if (phase === 'header') {
+          var mark = '"rows":[';
+          var idx  = buf.indexOf(mark);
+          if (idx < 0) return;
+          var head  = buf.slice(0, idx);
+          var daysM = head.match(/"class_days"\s*:\s*(\d+)/);
+          var pctM  = head.match(/"min_pct"\s*:\s*(\d+)/);
+          onHeader({
+            class_days: daysM ? parseInt(daysM[1]) : 0,
+            min_pct:    pctM  ? parseInt(pctM[1])  : 75
+          });
+          buf = buf.slice(idx + mark.length);
+          phase = 'rows';
+          resetExtractor();
+          processBuffer();
+          return;
+        }
+
+        /* ── Phase: rows — extract each {…} row object ── */
+        while (pos < buf.length) {
+          var c = buf[pos];
+          if (esc)                  { esc = false;    pos++; continue; }
+          if (c === '\\' && inStr)  { esc = true;     pos++; continue; }
+          if (c === '"')            { inStr = !inStr; pos++; continue; }
+          if (inStr)                {                  pos++; continue; }
+          if (c === '{') {
+            if (depth === 0) objStart = pos;
+            depth++;
+          } else if (c === '}') {
+            depth--;
+            if (depth === 0 && objStart >= 0) {
+              try { onRow(JSON.parse(buf.slice(objStart, pos + 1))); } catch (e) {}
+              buf = buf.slice(pos + 1); pos = -1; objStart = -1;
+            }
+          }
+          pos++;
+        }
+        if (objStart >= 0) { buf = buf.slice(objStart); pos = buf.length; objStart = 0; }
+        else               { buf = ''; pos = 0; }
+      }
+
+      function pump() {
+        reader.read().then(function (res) {
+          if (res.done) { onDone(); return; }
+          buf += dec.decode(res.value, { stream: true });
+          processBuffer();
+          pump();
+        }).catch(onError);
+      }
+      pump();
+    }).catch(onError);
+};
+
 // ── Core API helper ────────────────────────────────────────────────
 window.api = function (url, method, body) {
   method = method || 'GET';
@@ -489,8 +606,20 @@ window.apiUpload = function (url, formData) {
   });
 };
 
+// ── Status cache (5-minute TTL for NTP check) ──────────────────────
+var _statusCache = null, _statusTs = 0;
+function getStatus() {
+  var now = Date.now();
+  if (_statusCache && now - _statusTs < 300000) return Promise.resolve(_statusCache);
+  return api('/api/status').then(function (s) { _statusCache = s; _statusTs = Date.now(); return s; });
+}
+
 // ── Navbar builder ─────────────────────────────────────────────────
 window.buildNavbar = function (activeId) {
+  // Preload in parallel — results will be cached by the time the callbacks run
+  getSession();
+  getClasses();
+
   var links = [
     { id: 'classes',    href: '/select-class.html',  ic: '⊟',  label: 'Classes'      },
     { id: 'admin',      href: '/admin.html',          ic: '⚙',  label: 'Admin Panel'  },
@@ -513,6 +642,26 @@ window.buildNavbar = function (activeId) {
   getSession().then(function (sess) {
     var hasClass = !!(sess && sess.class);
 
+    // FIX-36: Check NTP sync status and show a banner if the clock is unsynced.
+    // Attendance timestamps will be wrong (year 2000) without a successful sync.
+    getStatus().then(function (s) {
+      if (s && s.ntp_ok === false) {
+        var existing = document.getElementById('ntp-warning-banner');
+        if (!existing) {
+          var banner = document.createElement('div');
+          banner.id = 'ntp-warning-banner';
+          banner.style.cssText =
+            'position:fixed;top:0;left:0;right:0;z-index:9999;' +
+            'background:#b45309;color:#fff;font-size:.72rem;' +
+            'letter-spacing:.06em;text-align:center;padding:.45rem .75rem;';
+          banner.textContent =
+            '\u26a0 Clock not synced \u2014 attendance timestamps may be incorrect. ' +
+            'Connect to WiFi to enable NTP sync.';
+          document.body.insertBefore(banner, document.body.firstChild);
+        }
+      }
+    }).catch(function () {});
+
     // Class selector dropdown in navbar
     var clsSel = document.querySelector('.nb-cls-sel');
     var themeBtn = document.getElementById('theme-btn');
@@ -526,7 +675,7 @@ window.buildNavbar = function (activeId) {
     }
 
     // Populate class selector
-    api('/api/classes').then(function (classes) {
+    getClasses().then(function (classes) {
       if (!clsSel) return;
       var sel = clsSel.querySelector('select');
       if (!sel) return;
@@ -537,9 +686,13 @@ window.buildNavbar = function (activeId) {
 
       // Change class on select
       sel.addEventListener('change', function () {
-        api('/api/set-class?c=' + sel.value).then(function () {
-          location.href = '/attendance.html';
-        }).catch(function (e) { showToast(e.message, true); });
+        var cn = sel.value;
+        // Optimistic: store locally so attendance.html can read immediately
+        try { sessionStorage.setItem('att_active_class', String(cn)); } catch (e) {}
+        invalidateSession(); // force re-fetch so g_class is fresh
+        api('/api/set-class?c=' + cn)
+          .catch(function (e) { showToast(e.message, true); });
+        location.href = '/attendance.html'; // navigate without waiting
       });
     }).catch(function () {});
 

@@ -95,19 +95,6 @@
       color:var(--muted); font-size:.76rem; text-align:center;
       padding:1rem .75rem; border:1px dashed var(--border); border-radius:4px; background:var(--stat-bg);
     }
-    .student-banner {
-      display:flex; align-items:center; gap:1rem; padding:.85rem 1.1rem;
-      background:linear-gradient(135deg,rgba(0,200,150,.07),transparent);
-      border:1px solid rgba(0,200,150,.2); border-radius:6px; margin-bottom:1rem;
-    }
-    .sb-avatar {
-      width:44px; height:44px; border-radius:8px; background:rgba(0,200,150,.12);
-      border:1px solid rgba(0,200,150,.25); display:flex; align-items:center; justify-content:center;
-      font-size:1.15rem; font-weight:bold; color:var(--accent); flex-shrink:0;
-    }
-    .sb-name { font-size:.95rem; font-weight:bold; }
-    .sb-sub  { font-size:.66rem; color:var(--muted); margin-top:.18rem; letter-spacing:.06em; }
-    .sb-back { margin-left:auto; font-size:.68rem; }
 
     @media (max-width:580px) {
       .tab-bar { max-width:100%; }
@@ -133,7 +120,8 @@
 
 <div class="confirm-bg" id="confirm-modal">
   <div class="confirm-box">
-    <p>Delete record for <strong id="confirm-label"></strong>?</p>
+    <!-- FIX-07: Fully dynamic text — confirmAction() sets the whole sentence -->
+    <p id="confirm-text"><strong id="confirm-label"></strong></p>
     <div class="confirm-actions">
       <button class="confirm-yes" id="confirm-yes-btn">Delete</button>
       <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
@@ -148,15 +136,6 @@
       <span class="subtitle" id="page-subtitle"></span>
       <button class="btn-sm btn btn-outline" style="margin-left:auto;margin-top:0" onclick="loadData()">↺ Refresh</button>
     </h2>
-
-    <div class="student-banner" id="student-banner" style="display:none">
-      <div class="sb-avatar" id="sb-avatar">?</div>
-      <div>
-        <div class="sb-name" id="sb-name">—</div>
-        <div class="sb-sub"  id="sb-sub">—</div>
-      </div>
-      <a class="back-btn sb-back" href="/students.html">← Students</a>
-    </div>
 
     <div class="scan-status-bar" id="scan-bar">
       <span class="scan-dot"   id="scan-dot"></span>
@@ -194,7 +173,7 @@
       <div class="today-table-wrap">
         <table>
           <thead>
-            <tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Status</th><th>Time</th></tr>
+            <tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Status</th><th>Time</th><th></th></tr>
           </thead>
           <tbody id="today-tbody">
             <tr><td colspan="7" class="empty">Loading…</td></tr>
@@ -223,11 +202,12 @@
 <script src="/app.js"></script>
 <script>
   var g_class       = 0;
-  var g_uid         = null;
   var g_sseHandle   = null;
   var g_todayRows   = [];
   var g_todayFilter = 'all';
-  var g_att_schema  = []; /* declared here; populated after schema fetch */
+  var g_loadGen     = 0;   /* incremented each loadData() — stale stream callbacks bail early */
+  // FIX-09: Removed g_att_schema — assigned but never read; also removed the
+  // api('/api/schema') call that populated it, saving a round-trip on every load.
 
   /* ─── Helpers ─────────────────────────────────────────── */
   function pad2(n){ return String(n).padStart(2,'0'); }
@@ -293,11 +273,7 @@
   /* ─── Init ───────────────────────────────────────────── */
   document.addEventListener('DOMContentLoaded', function(){
     buildNavbar('attendance');
-    api('/api/schema').then(function(s){ g_att_schema = (s.attendance || []).filter(function(c){ return !c.system && c.ask; }); });
-    var params   = new URLSearchParams(location.search);
-    g_uid        = params.get('uid') || null;
-    var startTab = params.get('tab') || (g_uid ? 'log-section' : 'today-section');
-    var today    = localDateStr(new Date());
+    var today = localDateStr(new Date());
 
     document.getElementById('page-subtitle').textContent = 'Loading…';
 
@@ -310,35 +286,14 @@
       g_class = s.class;
       document.getElementById('page-subtitle').textContent = 'Class '+g_class+' · '+today;
 
-      if(g_uid){
-        document.getElementById('scan-bar').style.display = 'none';
-        loadStudentInfo(g_uid);
-      } else {
-        document.getElementById('scan-bar').style.display = 'flex';
-        startRFIDPoll();
-      }
+      document.getElementById('scan-bar').style.display = 'flex';
+      startRFIDPoll();
 
       loadData();
-      initTabs(['today-section','log-section'], startTab);
+      initTabs(['today-section','log-section'], 'today-section');
       setActiveFilter('all');
     }).catch(function(){ location.href='/login.html'; });
   });
-
-  /* ─── Student info banner ────────────────────────────── */
-  function loadStudentInfo(uid){
-    api('/api/students?c='+g_class).then(function(arr){
-      var s=(arr||[]).find(function(x){ return x.uid===uid||x.card_uid===uid; });
-      if(!s) return;
-      var name=s.name||'Student';
-      var initials=name.trim().split(/\s+/).map(function(w){return w[0]||'';}).join('').slice(0,2).toUpperCase();
-      document.getElementById('sb-avatar').textContent = initials||'?';
-      document.getElementById('sb-name').textContent   = name;
-      document.getElementById('sb-sub').textContent    =
-        'Roll: '+(s.roll||'—')+'  ·  Batch: '+(s.batchtime||s.batch||'—')+'  ·  UID: '+(s.uid||s.card_uid||'—');
-      document.getElementById('student-banner').style.display = 'flex';
-      document.getElementById('page-title').textContent = 'Attendance History';
-    });
-  }
 
   /* ─── RFID fast polling (1.5 s — replaces broken SSE) ── */
   function startRFIDPoll(){
@@ -367,7 +322,25 @@
             if(d.status==='registered'){
               evEl.className   = 'scan-event';
               evEl.textContent = '✓ '+(d.name||d.uid)+' — '+(d.time||'');
-              loadData();          /* immediate refresh on new scan */
+              // Optimistic: mark the student present in the local state
+              var scannedUid = String(d.uid || '').trim();
+              var found = false;
+              for (var j = 0; j < g_todayRows.length; j++) {
+                if (String(g_todayRows[j].uid || '').trim() === scannedUid) {
+                  g_todayRows[j].status = 'present';
+                  g_todayRows[j].time   = d.time || '';
+                  found = true;
+                  break;
+                }
+              }
+              // Update stats counter immediately
+              var pCnt = g_todayRows.filter(function(r){ return r.status==='present'; }).length;
+              var aCnt = g_todayRows.filter(function(r){ return r.status==='absent';  }).length;
+              renderStats(g_todayRows.length, pCnt, aCnt);
+              filterToday(); // re-render table from local state
+              // Background reconciliation: full reload 4 s later
+              clearTimeout(window._rfidReloadTimer);
+              window._rfidReloadTimer = setTimeout(loadData, 4000);
             } else if(d.status==='already'){
               evEl.className   = 'scan-event';
               evEl.textContent = '↩ Already: '+(d.name||d.uid);
@@ -393,67 +366,49 @@
 
   /* ─── Load data ──────────────────────────────────────── */
   function loadData() {
+    var gen = ++g_loadGen;   /* this call's unique stamp — stale callbacks will see gen !== g_loadGen */
+
     var todayBox = document.getElementById('today-tbody');
     var logBox   = document.getElementById('log-groups');
     if (todayBox) todayBox.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
     if (logBox)   logBox.innerHTML   = "<div class='empty-note'>Loading…</div>";
 
     g_todayRows = [];
-    var firstTodayItem = true;
     var firstLogGroup  = true;
 
     var url = '/api/attendance?c=' + g_class;
-    if (g_uid) url += '&uid=' + encodeURIComponent(g_uid);
 
     apiStreamAttendance(
       url,
 
-      /* onHeader — stats arrive first, before any row data */
+      /* onHeader */
       function (header) {
+        if (gen !== g_loadGen) return;
         var st = header.stats || {};
         renderStats(st.total || 0, st.present || 0, st.absent || 0);
       },
 
-      /* onTodayItem — each student in today's tab arrives one at a time */
+      /* onTodayItem — append one row at a time as it arrives from the server,
+         exactly like students.html does — no full tbody rebuild per item.     */
       function (item) {
-        if (firstTodayItem) {
-          /* Clear the "Loading…" placeholder on first real row */
-          if (todayBox) todayBox.innerHTML = '';
-          firstTodayItem = false;
+        if (gen !== g_loadGen) return;
+        var r = normalizeTodayItem(item);
+        g_todayRows.push(r);
+
+        /* First row: clear the "Loading…" placeholder so the table appears */
+        if (g_todayRows.length === 1 && todayBox) {
+          todayBox.innerHTML = '';
         }
 
-        var row = normalizeTodayItem(item);
-        g_todayRows.push(row);
-
-        /* Append immediately so the user sees rows as they stream in */
-        if (!todayBox) return;
-        var i          = g_todayRows.length;
-        var statusHtml = row.status === 'present'
-          ? "<span class='status-present'>● Present</span>"
-          : "<span class='status-absent'>● Absent</span>";
-        var nameLink = row.uid
-          ? "<a href='/attendance.html?uid=" + encodeURIComponent(row.uid) +
-            "&tab=log-section' style='color:var(--text);text-decoration:none'>" +
-            esc(row.name || '—') + '</a>'
-          : esc(row.name || '—');
-
-        var tr = document.createElement('tr');
-        tr.className = 'clickable';
-        tr.innerHTML =
-          "<td class='num-col'>" + i + '</td>' +
-          '<td>' + nameLink + '</td>' +
-          "<td><span class='badge badge-grey'>" + esc(row.roll || '—') + '</span></td>' +
-          "<td><span class='badge badge-green' style='font-size:.64rem'>" + esc(row.uid || '—') + '</span></td>' +
-          "<td><span style='color:var(--muted);font-size:.82rem'>" + esc(row.batch || '—') + '</span></td>' +
-          '<td>' + statusHtml + '</td>' +
-          '<td>' + (row.time
-            ? "<span style='color:var(--text);font-size:.83rem'>" + esc(row.time) + '</span>'
-            : "<span style='color:var(--dim);font-size:.78rem'>—</span>") + '</td>';
-        todayBox.appendChild(tr);
+        /* Append this row directly — no full re-render needed */
+        if (todayBox) {
+          todayBox.appendChild(buildTodayRow(r, g_todayRows.length));
+        }
       },
 
-      /* onLogItem — each date-group in the full log arrives one at a time */
+      /* onLogItem */
       function (group) {
+        if (gen !== g_loadGen) return;
         if (firstLogGroup) {
           if (logBox) logBox.innerHTML = '';
           firstLogGroup = false;
@@ -461,9 +416,10 @@
         appendLogGroup(group);
       },
 
-      /* onDone — stream finished */
+      /* onDone */
       function () {
-        if (firstTodayItem && todayBox) {
+        if (gen !== g_loadGen) return;
+        if (g_todayRows.length === 0 && todayBox) {
           todayBox.innerHTML = "<tr><td colspan='7' class='empty'>No students found.</td></tr>";
         } else {
           filterToday();
@@ -471,10 +427,12 @@
         if (firstLogGroup && logBox) {
           logBox.innerHTML = "<div class='empty-note'>No attendance records yet.</div>";
         }
+        initGroups();
       },
 
       /* onError */
       function (e) {
+        if (gen !== g_loadGen) return;
         if (todayBox) todayBox.innerHTML =
           '<tr><td colspan="7" class="empty">Error: ' + esc(e.message) + '</td></tr>';
         if (logBox) logBox.innerHTML =
@@ -483,11 +441,117 @@
     );
   }
 
-  /* ─── Render today tab ───────────────────────────────── */
-  function renderToday(todayArr){
-    /* todayArr is a flat array — each item has present:bool, not sub-arrays */
-    g_todayRows = todayArr.map(normalizeTodayItem);
-    filterToday();
+  /* ─── AJAX: mark a student present ───────────────────────────────
+     POST /api/attendance/mark  { uid, date, time }
+     On success the row status badge flips immediately (optimistic UI);
+     the stat bar is also refreshed so the counts stay in sync.         */
+  function markPresent(uid, btn) {
+    if (!uid) return;
+    var today = localDateStr(new Date());
+    var now   = new Date();
+    var hhmm  = pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ':' + pad2(now.getSeconds());
+
+    btn.disabled    = true;
+    btn.textContent = '…';
+
+    api('/api/attendance/mark', 'POST', { uid: uid, date: today, time: hhmm })
+      .then(function () {
+        /* Optimistic: flip the row in g_todayRows and re-render */
+        g_todayRows.forEach(function (r) {
+          if (r.uid === uid) { r.status = 'present'; r.time = hhmm; }
+        });
+        filterToday();           /* re-renders table */
+        refreshSummary();        /* update stat bar counts */
+        showToast('✓ Marked present: ' + uid);
+      })
+      .catch(function (e) {
+        btn.disabled    = false;
+        btn.textContent = '+ Mark';
+        showToast(e.message, true);
+      });
+  }
+
+  /* ─── AJAX: delete a log record ─────────────────────────────────
+     GET /api/attendance/delete?id=N
+     The row fades out and is removed from the DOM immediately.         */
+  function deleteRecord(id, rowEl) {
+    if (!id) return;
+    confirmAction('Delete attendance record #' + id + '?', function () {
+      api('/api/attendance/delete?id=' + encodeURIComponent(id))
+        .then(function () {
+          rowEl.style.transition = 'opacity .25s';
+          rowEl.style.opacity    = '0';
+          setTimeout(function () { rowEl.remove(); refreshSummary(); }, 260);
+          showToast('Record deleted.');
+        })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  /* ─── AJAX: refresh stat-bar summary without a full reload ───────
+     GET /api/attendance/summary?c=N&date=YYYY-MM-DD                   */
+  function refreshSummary() {
+    var today = localDateStr(new Date());
+    api('/api/attendance/summary?c=' + g_class + '&date=' + today)
+      .then(function (s) {
+        renderStats(s.total || 0, s.present || 0, s.absent || 0);
+      })
+      .catch(function () {});   /* best-effort — silently ignore */
+  }
+
+
+
+  /* ─── Build a single TR for the today table ─────────────────────────
+     Extracted so both streaming (one-by-one append) and filterToday()
+     (full re-render on sort/search) share the exact same row markup.   */
+  function buildTodayRow(r, rowNum) {
+    var statusHtml = r.status === 'present'
+      ? "<span class='status-present'>● Present</span>"
+      : "<span class='status-absent'>● Absent</span>";
+
+    var nameLink = r.uid
+      ? "<a href='/student-detail.html?uid=" + encodeURIComponent(r.uid) +
+        "' style='color:var(--text);text-decoration:none'>" + esc(r.name || '—') + "</a>"
+      : esc(r.name || '—');
+
+    var actionCell = (r.uid && r.status === 'absent')
+      ? '<td><button class="btn-sm btn btn-outline ajax-mark-btn" ' +
+        'style="padding:.18rem .5rem;font-size:.62rem" ' +
+        'data-uid="' + esc(r.uid) + '">+ Mark</button></td>'
+      : '<td></td>';
+
+    var tr = document.createElement('tr');
+    tr.className = 'clickable';
+    if (r.uid) {
+      tr.addEventListener('click', function (e) {
+        if (!e.target.closest('a') && !e.target.closest('button'))
+          location.href = '/student-detail.html?uid=' + encodeURIComponent(r.uid);
+      });
+    }
+    tr.innerHTML =
+      "<td class='num-col'>" + rowNum + "</td>" +
+      "<td>" + nameLink + "</td>" +
+      "<td><span class='badge badge-grey'>"  + esc(r.roll  || '—') + "</span></td>" +
+      "<td><span class='badge badge-green' style='font-size:.64rem'>" + esc(r.uid || '—') + "</span></td>" +
+      "<td><span style='color:var(--muted);font-size:.82rem'>" + esc(r.batch || '—') + "</span></td>" +
+      "<td>" + statusHtml + "</td>" +
+      "<td>" + (r.time
+        ? "<span style='color:var(--text);font-size:.83rem'>"  + esc(r.time) + "</span>"
+        : "<span style='color:var(--dim);font-size:.78rem'>—</span>") + "</td>" +
+      actionCell;
+
+    /* Wire mark button immediately after building so it's live when appended */
+    if (r.uid && r.status === 'absent') {
+      var markBtn = tr.querySelector('.ajax-mark-btn');
+      if (markBtn) {
+        (function (uid, btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation(); markPresent(uid, btn);
+          });
+        })(r.uid, markBtn);
+      }
+    }
+    return tr;
   }
 
   function filterToday(){
@@ -518,27 +582,7 @@
     }
 
     rows.forEach(function(r, i){
-      var statusHtml = r.status==='present'
-        ? "<span class='status-present'>● Present</span>"
-        : "<span class='status-absent'>● Absent</span>";
-
-      var nameLink = r.uid
-        ? "<a href='/attendance.html?uid="+encodeURIComponent(r.uid)+"&tab=log-section' style='color:var(--text);text-decoration:none'>"+esc(r.name||'—')+"</a>"
-        : esc(r.name||'—');
-
-      var tr = document.createElement('tr');
-      tr.className = 'clickable';
-      tr.innerHTML =
-        "<td class='num-col'>"+(i+1)+"</td>"+
-        "<td>"+nameLink+"</td>"+
-        "<td><span class='badge badge-grey'>"+esc(r.roll||'—')+"</span></td>"+
-        "<td><span class='badge badge-green' style='font-size:.64rem'>"+esc(r.uid||'—')+"</span></td>"+
-        "<td><span style='color:var(--muted);font-size:.82rem'>"+esc(r.batch||'—')+"</span></td>"+
-        "<td>"+statusHtml+"</td>"+
-        "<td>"+(r.time
-          ? "<span style='color:var(--text);font-size:.83rem'>"+esc(r.time)+"</span>"
-          : "<span style='color:var(--dim);font-size:.78rem'>—</span>")+"</td>";
-      tbody.appendChild(tr);
+      tbody.appendChild(buildTodayRow(r, i + 1));
     });
   }
 
@@ -562,43 +606,37 @@
       return String(b.time || '').localeCompare(String(a.time || ''));
     });
 
-    var today      = getTodayName();
-    var showActions = !!g_uid;
+    var today = getTodayName();
     var pCnt = records.filter(function (r) { return (r.status || 'present') === 'present'; }).length;
     var aCnt = records.filter(function (r) { return r.status === 'absent'; }).length;
 
-    var tableHead = showActions
-      ? '<tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th><th>Actions</th></tr>'
-      : '<tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th></tr>';
+    var tableHead = '<tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th><th></th></tr>';
 
     var tbodyHtml = records.map(function (r, idx) {
       var statusHtml = (r.status || 'present') === 'present'
         ? "<span class='status-present'>● Present</span>"
         : "<span class='status-absent'>● Absent</span>";
       var nameCell = r.uid
-        ? "<a href='/attendance.html?uid=" + encodeURIComponent(r.uid) +
-          "&tab=log-section' style='color:var(--text);text-decoration:none'>" +
+        ? "<a href='/student-detail.html?uid=" + encodeURIComponent(r.uid) +
+          "' style='color:var(--text);text-decoration:none'>" +
           esc(r.name || '—') + '</a>'
         : esc(r.name || '—');
 
-      var row =
-        "<tr data-name='" + esc(r.name || '') + "' data-uid='" + esc(r.uid || '') +
-        "' data-status='" + esc(r.status || 'present') + "'>" +
+      return "<tr data-name='" + esc(r.name || '') + "' data-uid='" + esc(r.uid || '') +
+        "' data-status='" + esc(r.status || 'present') + "' data-id='" + esc(r.id || '') + "'>" +
         "<td class='num-col'>" + (idx + 1) + '</td>' +
         '<td>' + nameCell + '</td>' +
         "<td><span class='badge badge-grey'>" + esc(r.roll || '—') + '</span></td>' +
         "<td><span class='badge badge-green' style='font-size:.64rem'>" + esc(r.uid || '—') + '</span></td>' +
         "<td><span style='color:var(--muted);font-size:.82rem'>" + esc(r.batch || '—') + '</span></td>' +
         "<td><span style='color:var(--text);font-size:.83rem'>" + esc(r.time || '—') + '</span></td>' +
-        '<td>' + statusHtml + '</td>';
-
-      if (showActions) {
-        row += "<td class='actions-col'>" +
-          "<button class='act-btn act-btn-del' onclick=\"delRecord(" +
-          JSON.stringify(r.id || '') + ',' + JSON.stringify(r.name || '') + ',' +
-          JSON.stringify(date) + ")\">✕ Remove</button></td>";
-      }
-      return row + '</tr>';
+        '<td>' + statusHtml + '</td>' +
+        "<td>" + (r.id
+          ? "<button class='btn-sm btn btn-outline ajax-del-btn' " +
+            "style='padding:.18rem .45rem;font-size:.62rem;color:var(--danger);border-color:var(--danger)' " +
+            "data-id='" + esc(r.id) + "'>✕</button>"
+          : '') + '</td>' +
+        '</tr>';
     }).join('');
 
     var groupEl = document.createElement('div');
@@ -618,90 +656,19 @@
       '</div>';
 
     container.appendChild(groupEl);
-  }
 
-  function renderLog(logArr){
-    var container = document.getElementById('log-groups');
-    if(!container) return;
-
-    /* Build date→records map from the date-group array */
-    var grouped = {};
-    logArr.forEach(function(group){
-      var date = group.date || getTodayName();
-      grouped[date] = (group.records||[]).map(function(rec){
-        return normalizeLogRecord(rec, date);
+    /* Wire AJAX delete buttons in this group */
+    groupEl.querySelectorAll('.ajax-del-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var rowEl = btn.closest('tr');
+        deleteRecord(btn.dataset.id, rowEl);
       });
     });
-
-    var dates = Object.keys(grouped).sort().reverse();
-    if(!dates.length){
-      container.innerHTML = "<div class='empty-note'>No attendance records yet.</div>";
-      return;
-    }
-
-    var today       = getTodayName();
-    var showActions = !!g_uid;
-    container.innerHTML = '';
-
-    dates.forEach(function(date){
-      var records = grouped[date]||[];
-      records.sort(function(a,b){ return String(b.time||'').localeCompare(String(a.time||'')); });
-
-      var pCnt = records.filter(function(r){ return (r.status||'present')==='present'; }).length;
-      var aCnt = records.filter(function(r){ return r.status==='absent'; }).length;
-
-      var group = document.createElement('div');
-      group.className = 'date-group collapsed';
-
-      var tableHead = showActions
-        ? "<tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th><th>Actions</th></tr>"
-        : "<tr><th>#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Time</th><th>Status</th></tr>";
-
-      var tbodyHtml = records.map(function(r, idx){
-        var statusHtml = (r.status||'present')==='present'
-          ? "<span class='status-present'>● Present</span>"
-          : "<span class='status-absent'>● Absent</span>";
-        var nameCell = r.uid
-          ? "<a href='/attendance.html?uid="+encodeURIComponent(r.uid)+"&tab=log-section' style='color:var(--text);text-decoration:none'>"+esc(r.name||'—')+"</a>"
-          : esc(r.name||'—');
-
-        var row =
-          "<tr data-name='"+esc(r.name||'')+"' data-uid='"+esc(r.uid||'')+"' data-status='"+esc(r.status||'present')+"'>"+
-          "<td class='num-col'>"+(idx+1)+"</td>"+
-          "<td>"+nameCell+"</td>"+
-          "<td><span class='badge badge-grey'>"+esc(r.roll||'—')+"</span></td>"+
-          "<td><span class='badge badge-green' style='font-size:.64rem'>"+esc(r.uid||'—')+"</span></td>"+
-          "<td><span style='color:var(--muted);font-size:.82rem'>"+esc(r.batch||'—')+"</span></td>"+
-          "<td><span style='color:var(--text);font-size:.83rem'>"+esc(r.time||'—')+"</span></td>"+
-          "<td>"+statusHtml+"</td>";
-
-        if(showActions){
-          row += "<td class='actions-col'>"+
-            "<button class='act-btn act-btn-del' onclick=\"delRecord("+
-            JSON.stringify(r.id||'')+","+JSON.stringify(r.name||'')+","+JSON.stringify(date)+
-            ")\">✕ Remove</button></td>";
-        }
-        return row+"</tr>";
-      }).join('');
-
-      group.innerHTML =
-        "<div class='date-group-hdr'>"+
-          "<span class='dg-date'>"+esc(date)+(date===today?" <span class='today-tag'>Today</span>":"")+"</span>"+
-          (pCnt?"<span style='font-size:.66rem;color:var(--accent);margin-left:.4rem'>&#9679; "+pCnt+"P</span>":"")+
-          (aCnt?"<span style='font-size:.66rem;color:var(--danger);margin-left:.3rem'>&#9679; "+aCnt+"A</span>":"")+
-          "<span class='dg-cnt'>"+records.length+" record"+(records.length===1?"":"s")+"</span>"+
-          "<span class='dg-arr'>&#9660;</span>"+
-        "</div>"+
-        "<div class='date-group-body'>"+
-          "<table><thead>"+tableHead+"</thead><tbody>"+tbodyHtml+"</tbody></table>"+
-        "</div>";
-
-      container.appendChild(group);
-    });
-
-    initGroups();
-    filterLog();
   }
+
+  // FIX-08: Deleted dead renderLog() — it was never called; the page uses
+  // appendLogGroup() + streaming instead. initGroups() is now called in onDone (FIX-05).
 
   function filterLog(){
     var searchEl = document.getElementById('log-search');
@@ -720,13 +687,6 @@
     });
   }
 
-  function delRecord(id, name, date){
-    confirmAction(name+' on '+date, function(){
-      api('/api/attendance/delete?id='+encodeURIComponent(id)+'&c='+g_class)
-        .then(function(){ showToast('Record deleted'); loadData(); })
-        .catch(function(e){ showToast(e.message, true); });
-    });
-  }
 </script>
 </body>
 </html>

@@ -12,17 +12,6 @@
 #include "esp_log.h"
 #include <stdio.h>
 
-/* Allocate the import buffer preferring external PSRAM (8 MB on ESP32-S3)
- * so that the 128 KB block doesn't have to come from the small internal
- * DRAM heap that is already pressured by WiFi + httpd + SQLite.
- * Falls back to malloc() (internal DRAM) on boards without PSRAM. */
-static inline char *import_buf_alloc(size_t sz)
-{
-    char *p = heap_caps_malloc(sz, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!p) p = malloc(sz);   /* PSRAM absent or full — try internal DRAM */
-    return p;
-}
-
 /* ── Schema ──────────────────────────────────────────────────── */
 
 /* GET /api/schema */
@@ -65,7 +54,7 @@ esp_err_t api_schema_add_post(httpd_req_t *req)
 }
 
 /* GET /api/schema/delete?type=student&key=phone */
-esp_err_t api_schema_delete_get(httpd_req_t *req)
+esp_err_t api_schema_delete_handler(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     char type[16]={0}, key[32]={0};
@@ -99,7 +88,7 @@ esp_err_t api_schema_edit_post(httpd_req_t *req)
 }
 
 /* GET /api/schema/toggle?coltype=student&key=phone&flag=ask&val=1 */
-esp_err_t api_schema_toggle_get(httpd_req_t *req)
+esp_err_t api_schema_toggle_post(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     char ct[16]={0}, key[32]={0}, flag[16]={0}, valbuf[4]={0};
@@ -120,8 +109,11 @@ esp_err_t api_admin_settings_get(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     int val = 75; /* default */
-    const char *buf = db_config_get("min_att_pct");
+    /* FIX-24: db_config_get() malloc's — caller must free(). Previously the
+     * pointer was dropped, leaking on every GET /api/admin/settings request. */
+    char *buf = db_config_get("min_att_pct");
     if (buf && buf[0]) val = atoi(buf);
+    free(buf);
     char resp[48];
     snprintf(resp, sizeof(resp), "{\"min_att_pct\":%d}", val);
     httpd_resp_set_type(req, "application/json");
@@ -167,7 +159,7 @@ esp_err_t api_admin_reset_class_post(httpd_req_t *req)
 }
 
 /* GET /api/admin/reset-all */
-esp_err_t api_admin_reset_all_get(httpd_req_t *req)
+esp_err_t api_admin_reset_all_post(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     db_reset_all();
@@ -198,7 +190,7 @@ esp_err_t api_admin_factory_reset_post(httpd_req_t *req)
 }
 
 /* GET /api/admin/backup-now */
-esp_err_t api_admin_backup_get(httpd_req_t *req)
+esp_err_t api_admin_backup_post(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     db_sd_backup();
@@ -242,90 +234,128 @@ esp_err_t api_admin_export_csv_get(httpd_req_t *req)
     return ret;
 }
 
-/* POST /api/admin/import-csv
-   Multipart form: classnum, type, file (CSV text) */
+/* \u2500\u2500 Streaming CSV import \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+ *
+ * ROOT CAUSE OF "oom" BUG: the old code did a single 128 KB
+ * heap_caps_malloc/malloc call for the import buffer.  CONFIG_SPIRAM
+ * was not set, so the PSRAM path always returned NULL, and 128 KB of
+ * *contiguous* internal DRAM is unavailable once WiFi + httpd + SQLite
+ * have fragmented the heap.
+ *
+ * FIX A \u2013 sdkconfig: CONFIG_SPIRAM=y now enabled for N16R8 (8 MB OPI
+ *          PSRAM), so import_buf_alloc would succeed.  But we go further:
+ *
+ * FIX B \u2013 No large buffer at all: read the POST body in 4 KB socket
+ *          chunks, accumulate lines in a 512-byte stack buffer, and call
+ *          db_import_process_line() per row.  Peak extra heap: 4 KB.
+ *          Works even on boards without PSRAM.
+ *
+ * ALSO FIXED: api_csv_upload() was defined but never registered as a
+ * route \u2014 dead code.  Removed along with s_import_buf / s_import_len.
+ * \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
 
-/* Import buffer — allocated on demand, freed immediately after use.
- * Previously this was a 128 KB static array in .bss which permanently
- * consumed a quarter of internal DRAM from boot, contributing to the
- * heap fragmentation that caused the DMA crash on the attendance page. */
-#define IMPORT_BUF_SIZE 131072
-static char   *s_import_buf = NULL;
-static size_t  s_import_len = 0;
+#define CSV_CHUNK  4096   /* socket read chunk \u2014 always fits in DRAM */
+#define CSV_LMAX   512    /* max bytes per CSV row                    */
 
-esp_err_t api_csv_upload(httpd_req_t *req)
+/* Split a CSV line in-place (strtok). Returns field count. */
+static int csv_split_line(char *line, char **fields, int max_fields)
 {
-    /* Allocate buffer if not already allocated */
-    if (!s_import_buf) {
-        s_import_buf = import_buf_alloc(IMPORT_BUF_SIZE);
-        if (!s_import_buf) {
-            ESP_LOGE("api_admin", "Failed to allocate import buffer (%d bytes)",
-                     IMPORT_BUF_SIZE);
-            return ESP_ERR_NO_MEM;
-        }
+    int n = 0;
+    char *tok = strtok(line, ",");
+    while (tok && n < max_fields) {
+        while (*tok == ' ') tok++;   /* strip leading whitespace */
+        fields[n++] = tok;
+        tok = strtok(NULL, ",");
     }
-    s_import_len = 0;
-    size_t remaining = req->content_len;
-    while (remaining > 0) {
-        size_t avail = IMPORT_BUF_SIZE - s_import_len - 1;
-        if (avail == 0) break; /* buffer full */
-        size_t to_read = remaining < avail ? remaining : avail;
-        int ret = httpd_req_recv(req, s_import_buf + s_import_len, to_read);
-        if (ret <= 0) {
-            if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
-            break;
-        }
-        s_import_len += (size_t)ret;
-        remaining    -= (size_t)ret;
-        /* Yield to avoid watchdog on large uploads */
-        vTaskDelay(1);
-    }
-    s_import_buf[s_import_len] = '\0';
-    return ESP_OK;
+    return n;
 }
 
-esp_err_t api_admin_import_csv_post(httpd_req_t *req)
+/* Core streaming helper shared by both import endpoints.
+ * Reads POST body in CSV_CHUNK pieces, parses lines, inserts rows.
+ * Never allocates more than CSV_CHUNK bytes from the heap. */
+static esp_err_t stream_import_csv(httpd_req_t *req,
+                                   int class_num, const char *type)
 {
-    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
-
-    /* classnum and type come as query params since body is the CSV */
-    char cbuf[8]={0}, type[16]={0};
-    http_query_param(req,"classnum",cbuf, sizeof(cbuf));
-    http_query_param(req,"type",    type, sizeof(type));
-
-    int cn = atoi(cbuf);
-    if (!cn || !strlen(type))
-        return http_send_err(req, 400, "missing_classnum_or_type");
-
-    if (s_import_len == 0) {
-        /* Read body directly — buffer holds IMPORT_BUF_SIZE-1 bytes + null terminator */
-        if (!s_import_buf) {
-            s_import_buf = import_buf_alloc(IMPORT_BUF_SIZE);
-            if (!s_import_buf)
-                return http_send_err(req, 500, "oom");
-        }
-        /* http_read_body returns byte count, or -1 on error.
-         * Must NOT use strlen() — malloc buffer is uninitialised and
-         * http_read_body does not null-terminate. */
-        int nread = http_read_body(req, s_import_buf, IMPORT_BUF_SIZE - 1);
-        if (nread < 0) {
-            free(s_import_buf); s_import_buf = NULL;
-            return http_send_err(req, 400, "read_error");
-        }
-        s_import_buf[nread] = '\0';   /* null-terminate for safety */
-        s_import_len = (size_t)nread;
+    /* FIX-26: Reject empty bodies early — avoids opening a useless transaction
+     * that writes nothing and wastes a flash write cycle. */
+    if (req->content_len == 0) {
+        return http_send_err(req, 400, "empty_body");
     }
 
-    if (s_import_len == 0) {
-        free(s_import_buf); s_import_buf = NULL;
-        return http_send_err(req, 400, "no_data");
+    char *chunk = malloc(CSV_CHUNK);
+    if (!chunk) return http_send_err(req, 500, "oom");
+
+    char line_buf[CSV_LMAX];
+    int  line_len     = 0;
+    bool skip_hdr     = true;   /* first non-empty line is the header */
+    /* FIX-25: Track whether the current line exceeded CSV_LMAX so we can
+     * skip it entirely instead of inserting truncated, corrupt data. */
+    bool line_overflow = false;
+    db_import_result_t result = {0, 0};
+    int remaining = (int)req->content_len;
+
+    db_import_begin();
+
+    while (remaining > 0) {
+        int to_read = remaining < CSV_CHUNK ? remaining : CSV_CHUNK;
+        int got = httpd_req_recv(req, chunk, to_read);
+        if (got <= 0) {
+            if (got == HTTPD_SOCK_ERR_TIMEOUT) continue;
+            break;
+        }
+        remaining -= got;
+
+        for (int i = 0; i < got; i++) {
+            char c = chunk[i];
+            if (c == '\n') {
+                if (line_overflow) {
+                    /* FIX-25: Line was too long — skip it rather than inserting
+                     * the truncated garbage that was buffered so far. */
+                    ESP_LOGW("import", "Skipped CSV line exceeding %d bytes", CSV_LMAX);
+                    line_overflow = false;
+                    result.skipped++;
+                } else {
+                    /* Strip trailing \r */
+                    if (line_len > 0 && line_buf[line_len - 1] == '\r') line_len--;
+                    line_buf[line_len] = '\0';
+                    if (line_len > 0) {
+                        if (skip_hdr) {
+                            skip_hdr = false;
+                        } else {
+                            char *fields[8] = {0};
+                            int nf = csv_split_line(line_buf, fields, 8);
+                            db_import_process_line(class_num, type, fields, nf, &result);
+                        }
+                    }
+                }
+                line_len = 0;
+            } else if (line_len < CSV_LMAX - 1) {
+                line_buf[line_len++] = c;
+            } else {
+                /* FIX-25: Buffer full — mark overflow, keep reading until '\n' */
+                line_overflow = true;
+            }
+        }
+        vTaskDelay(1);  /* yield to watchdog / IDLE on large uploads */
     }
 
-    db_import_result_t result = db_import_csv(cn, type, s_import_buf, s_import_len);
-    s_import_len = 0;
-    /* Free the buffer immediately — it's only needed during import */
-    free(s_import_buf);
-    s_import_buf = NULL;
+    /* Handle last line if file has no trailing newline */
+    if (!line_overflow && line_len > 0 && !skip_hdr) {
+        if (line_buf[line_len - 1] == '\r') line_len--;
+        line_buf[line_len] = '\0';
+        char *fields[8] = {0};
+        int nf = csv_split_line(line_buf, fields, 8);
+        db_import_process_line(class_num, type, fields, nf, &result);
+    }
+
+    /* FIX-26: Only commit if at least one row was processed; otherwise rollback
+     * to avoid a useless write transaction on flash storage. */
+    if (result.added > 0 || result.skipped > 0) {
+        db_import_end();
+    } else {
+        db_exec_raw("ROLLBACK;");
+    }
+    free(chunk);
 
     char out[128];
     snprintf(out, sizeof(out),
@@ -334,6 +364,36 @@ esp_err_t api_admin_import_csv_post(httpd_req_t *req)
     return http_send_json(req, 200, out);
 }
 
+/* POST /api/admin/import-csv?classnum=7&type=students  (body: CSV text) */
+esp_err_t api_admin_import_csv_post(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+
+    char cbuf[8] = {0}, type[16] = {0};
+    http_query_param(req, "classnum", cbuf, sizeof(cbuf));
+    http_query_param(req, "type",     type, sizeof(type));
+
+    int cn = atoi(cbuf);
+    if (!cn || !strlen(type))
+        return http_send_err(req, 400, "missing_classnum_or_type");
+
+    return stream_import_csv(req, cn, type);
+}
+
+/* POST /api/admin/import-attendance-zip?classnum=7  (body: CSV text) */
+esp_err_t api_admin_import_attendance_zip_post(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+
+    char cbuf[8] = {0};
+    int cn = 0;
+    if (http_query_param(req, "classnum", cbuf, sizeof(cbuf)))
+        cn = atoi(cbuf);
+    if (!cn) cn = auth_get_selected_class();
+    if (!cn) return http_send_err(req, 400, "no_class");
+
+    return stream_import_csv(req, cn, "attendance");
+}
 
 /* GET /api/status */
 esp_err_t api_status_get(httpd_req_t *req)
@@ -341,7 +401,32 @@ esp_err_t api_status_get(httpd_req_t *req)
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     int cls = auth_get_selected_class();
     char *json = db_status_json(cls);
-    esp_err_t ret = http_send_json(req, 200, json ? json : "{}");
+
+    /* FIX-36: Inject ntp_ok into the status response so the frontend can
+     * show a clock-warning banner when the timestamp is unreliable. */
+    char *ntp_val = db_config_get("ntp_synced");
+    bool ntp_ok = (ntp_val && ntp_val[0] == '1');
+    free(ntp_val);
+
+    esp_err_t ret;
+    if (json && json[0] == '{') {
+        /* Append "ntp_ok":true/false before the closing } */
+        size_t jlen = strlen(json);
+        char *augmented = malloc(jlen + 32);
+        if (augmented) {
+            /* Strip trailing } and add the field */
+            memcpy(augmented, json, jlen - 1);
+            snprintf(augmented + jlen - 1, 32,
+                     ",\"ntp_ok\":%s}", ntp_ok ? "true" : "false");
+            ret = http_send_json(req, 200, augmented);
+            free(augmented);
+        } else {
+            ret = http_send_json(req, 200, json);
+        }
+    } else {
+        ret = http_send_json(req, 200,
+            ntp_ok ? "{\"ntp_ok\":true}" : "{\"ntp_ok\":false}");
+    }
     free(json);
     return ret;
 }
@@ -385,63 +470,6 @@ esp_err_t api_admin_export_all_zip_get(httpd_req_t *req)
     return ret;
 }
 
-/* POST /api/admin/import-attendance-zip — import attendance CSV (same as import-csv) */
-esp_err_t api_admin_import_attendance_zip_post(httpd_req_t *req)
-{
-    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
-
-    /* Allocate import buffer if not already held */
-    if (!s_import_buf) {
-        s_import_buf = import_buf_alloc(IMPORT_BUF_SIZE);
-        if (!s_import_buf)
-            return http_send_err(req, 500, "oom");
-    }
-
-    /* Read body into import buffer */
-    s_import_len = 0;
-    size_t remaining = req->content_len;
-    while (remaining > 0) {
-        size_t avail = IMPORT_BUF_SIZE - s_import_len - 1;
-        if (avail == 0) break;
-        size_t to_read = remaining < avail ? remaining : avail;
-        int ret = httpd_req_recv(req, s_import_buf + s_import_len, to_read);
-        if (ret <= 0) {
-            if (ret == HTTPD_SOCK_ERR_TIMEOUT) continue;
-            break;
-        }
-        s_import_len += (size_t)ret;
-        remaining    -= (size_t)ret;
-        vTaskDelay(1);
-    }
-    s_import_buf[s_import_len] = '\0';
-
-    if (s_import_len == 0) {
-        free(s_import_buf); s_import_buf = NULL;
-        return http_send_err(req, 400, "no_data");
-    }
-
-    /* Try to get class from query param, fallback to session class */
-    char cbuf[8] = {0};
-    int cn = 0;
-    if (http_query_param(req, "classnum", cbuf, sizeof(cbuf)))
-        cn = atoi(cbuf);
-    if (!cn) cn = auth_get_selected_class();
-    if (!cn) {
-        free(s_import_buf); s_import_buf = NULL;
-        return http_send_err(req, 400, "no_class");
-    }
-
-    db_import_result_t result = db_import_csv(cn, "attendance", s_import_buf, s_import_len);
-    s_import_len = 0;
-    free(s_import_buf);
-    s_import_buf = NULL;
-
-    char out[128];
-    snprintf(out, sizeof(out),
-             "{\"ok\":true,\"added\":%d,\"skipped\":%d}",
-             result.added, result.skipped);
-    return http_send_json(req, 200, out);
-}
 
 /* POST /api/admin/reboot */
 esp_err_t api_admin_reboot_post(httpd_req_t *req)

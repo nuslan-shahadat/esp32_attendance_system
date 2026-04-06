@@ -32,4 +32,17 @@ CONFIG_LWIP_SNTP_MAX_SERVERS=1
 CONFIG_FATFS_LFN_HEAP=y
 
 # Flash size — matches partition table layout and suppresses boot warning
-CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+# ── ESP32-S3 N16R8: 8 MB OPI PSRAM ───────────────────────────────
+# Enable PSRAM so the httpd import buffer and other large allocations
+# can use the 8 MB external RAM instead of fragmented internal DRAM.
+CONFIG_SPIRAM=y
+CONFIG_ESP32S3_SPIRAM_SUPPORT=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Keep small allocations in fast internal DRAM; large ones go to PSRAM
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=16384
+# Move WiFi/LwIP RX buffers to PSRAM to free internal heap
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+
+# ── Flash: 16 MB (N16R8) ─────────────────────────────────────────
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y

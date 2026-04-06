@@ -90,6 +90,135 @@
 
 <script src="/app.js"></script>
 <script>
+  var g_class     = 0;
+  var g_reportGen = 0;   /* incremented each loadReport() — stale callbacks bail early */
+  var g_rows      = [];
+  var g_classDays = 0;
+  var g_minPct    = 75;
+
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('report');
+
+    var now = new Date();
+    document.getElementById('month-pick').value =
+      now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+    getSession().then(function (s) {
+      if (!s.class) { location.href = '/select-class.html'; return; }
+      g_class = s.class;
+      loadReport();
+    }).catch(function () { location.href = '/login.html'; });
+  });
+
+  function loadReport() {
+    var gen   = ++g_reportGen;
+    var month = document.getElementById('month-pick').value;
+    if (!month) { showToast('Select a month', true); return; }
+
+    document.getElementById('loading').style.display      = 'block';
+    document.getElementById('rep-table').style.display    = 'none';
+    document.getElementById('rep-empty').style.display    = 'none';
+    document.getElementById('summary-wrap').style.display = 'none';
+    document.getElementById('csv-btn').style.display      = 'none';
+    document.getElementById('rep-body').innerHTML         = '';
+    document.getElementById('rep-foot').innerHTML         = '';
+
+    g_rows = []; g_classDays = 0; g_minPct = 75;
+
+    apiStreamReport(
+      '/api/report?c=' + g_class + '&month=' + month,
+
+      /* onHeader */
+      function (hdr) {
+        if (gen !== g_reportGen) return;
+        g_classDays = hdr.class_days;
+        g_minPct    = hdr.min_pct;
+      },
+
+      /* onRow — render each student as it arrives */
+      function (r) {
+        if (gen !== g_reportGen) return;
+        g_rows.push(r);
+        if (g_rows.length === 1) {
+          document.getElementById('loading').style.display      = 'none';
+          document.getElementById('rep-table').style.display    = 'table';
+          document.getElementById('summary-wrap').style.display = 'block';
+        }
+        appendRow(r, g_rows.length);
+        updateSummary();
+      },
+
+      /* onDone */
+      function () {
+        if (gen !== g_reportGen) return;
+        document.getElementById('loading').style.display = 'none';
+        if (g_rows.length === 0) {
+          document.getElementById('rep-empty').style.display = 'block';
+          return;
+        }
+        updateSummary();
+        renderFooter();
+        var csvBtn = document.getElementById('csv-btn');
+        csvBtn.href = '/api/admin/export-csv?c=' + g_class + '&type=attendance&month=' + month;
+        csvBtn.style.display = 'inline-flex';
+      },
+
+      /* onError */
+      function (e) {
+        if (gen !== g_reportGen) return;
+        document.getElementById('loading').style.display = 'none';
+        showToast(e.message, true);
+      }
+    );
+  }
+
+  function appendRow(r, idx) {
+    var pct    = Math.round(r.pct || 0);
+    var cls    = pct >= g_minPct ? 'sv-green'      : pct >= 50 ? 'sv-warn'      : 'sv-red';
+    var barCls = pct >= g_minPct ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red';
+    var status = pct >= g_minPct
+      ? '<span class="badge badge-green">OK</span>'
+      : '<span class="badge badge-warn">Low</span>';
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="num-col">'      + idx              + '</td>' +
+      '<td data-label="Name">'    + esc(r.name)      + '</td>' +
+      '<td data-label="Roll">'    + esc(r.roll)      + '</td>' +
+      '<td data-label="Present">' + (r.present || 0) + ' / ' + g_classDays + '</td>' +
+      '<td data-label="Att%" class="pct-cell">' +
+        '<div class="pct-num ' + cls + '">' + pct + '%</div>' +
+        '<div class="pct-bar-wrap"><div class="pct-bar ' + barCls + '" style="width:' + pct + '%"></div></div>' +
+      '</td>' +
+      '<td data-label="Status">' + status + '</td>';
+    document.getElementById('rep-body').appendChild(tr);
+  }
+
+  function updateSummary() {
+    var total      = g_rows.length;
+    var belowCount = g_rows.filter(function (r) { return (r.pct || 0) < g_minPct; }).length;
+    document.getElementById('rp-days').textContent     = g_classDays;
+    document.getElementById('rp-students').textContent = total;
+    document.getElementById('rp-ok').textContent       = total - belowCount;
+    document.getElementById('rp-below').textContent    = belowCount;
+  }
+
+  function renderFooter() {
+    var total   = g_rows.length;
+    var avgPct  = total ? Math.round(g_rows.reduce(function (s, r) { return s + (r.pct || 0); }, 0) / total) : 0;
+    var okCount = g_rows.filter(function (r) { return (r.pct || 0) >= g_minPct; }).length;
+    document.getElementById('rep-foot').innerHTML =
+      '<td colspan="3">Class Average</td><td></td>' +
+      '<td>' + avgPct + '%</td>' +
+      '<td>' + okCount + '/' + total + ' OK</td>';
+  }
+
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+</script>
+<script>
   var g_class = 0;
 
   document.addEventListener('DOMContentLoaded', function () {
@@ -108,77 +237,16 @@
     }).catch(function () { location.href = '/login.html'; });
   });
 
-  function loadReport() {
-    var month  = document.getElementById('month-pick').value;
-    if (!month) { showToast('Select a month', true); return; }
-
-    document.getElementById('loading').style.display     = 'block';
-    document.getElementById('rep-table').style.display   = 'none';
-    document.getElementById('rep-empty').style.display   = 'none';
-    document.getElementById('summary-wrap').style.display = 'none';
-    document.getElementById('csv-btn').style.display     = 'none';
-
-    api('/api/report?c=' + g_class + '&month=' + month)
-      .then(function (data) {
-        document.getElementById('loading').style.display = 'none';
-        if (!data.rows || !data.rows.length) {
-          document.getElementById('rep-empty').style.display = 'block';
-          return;
-        }
-
-        var minPct = data.min_pct || 75;
-        var belowCount = data.rows.filter(function (r) { return (r.pct || 0) < minPct; }).length;
-        var okCount    = data.rows.length - belowCount;
-
-        document.getElementById('rp-days').textContent     = data.class_days || 0;
-        document.getElementById('rp-students').textContent = data.rows.length;
-        document.getElementById('rp-ok').textContent       = okCount;
-        document.getElementById('rp-below').textContent    = belowCount;
-        document.getElementById('summary-wrap').style.display = 'block';
-
-        var tbody = document.getElementById('rep-body');
-        tbody.innerHTML = '';
-        data.rows.forEach(function (r, i) {
-          var pct    = Math.round(r.pct || 0);
-          var cls    = pct >= minPct ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red';
-          var barCls = pct >= minPct ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red';
-          var status = pct >= minPct
-            ? '<span class="badge badge-green">OK</span>'
-            : '<span class="badge badge-warn">Low</span>';
-          var tr = document.createElement('tr');
-          tr.innerHTML =
-            '<td class="num-col">' + (i+1) + '</td>' +
-            '<td data-label="Name">' + esc(r.name) + '</td>' +
-            '<td data-label="Roll">'  + esc(r.roll) + '</td>' +
-            '<td data-label="Present">' + (r.present || 0) + ' / ' + (data.class_days || 0) + '</td>' +
-            '<td data-label="Att%" class="pct-cell">' +
-              '<div class="pct-num ' + cls + '">' + pct + '%</div>' +
-              '<div class="pct-bar-wrap"><div class="pct-bar ' + barCls + '" style="width:' + pct + '%"></div></div>' +
-            '</td>' +
-            '<td data-label="Status">' + status + '</td>';
-          tbody.appendChild(tr);
-        });
-
-        var total  = data.rows.length;
-        var avgPct = total ? Math.round(data.rows.reduce(function (s,r) { return s + (r.pct || 0); }, 0) / total) : 0;
-        document.getElementById('rep-foot').innerHTML =
-          '<td colspan="3">Class Average</td><td></td>' +
-          '<td>' + avgPct + '%</td>' +
-          '<td>' + okCount + '/' + total + ' OK</td>';
-
-        document.getElementById('rep-table').style.display = 'table';
-
-        var csvBtn = document.getElementById('csv-btn');
-        csvBtn.href = '/api/admin/export-csv?c=' + g_class + '&type=attendance&month=' + month;
-        csvBtn.style.display = 'inline-flex';
-      })
-      .catch(function (e) {
-        document.getElementById('loading').style.display = 'none';
-        showToast(e.message, true);
-      });
+  // FIX-18: Added escaping for >, ", and ' — previously missing, leaving values
+  // inside attributes injectable. Now matches the complete esc() in other pages.
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g,  '&amp;')
+      .replace(/</g,  '&lt;')
+      .replace(/>/g,  '&gt;')
+      .replace(/"/g,  '&quot;')
+      .replace(/'/g,  '&#39;');
   }
-
-  function esc(v) { return String(v || '').replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
 </script>
 </body>
 </html>

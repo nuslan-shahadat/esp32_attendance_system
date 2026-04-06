@@ -6,19 +6,31 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* GET /api/rfid-events — polled by frontend every 3 s instead of SSE */
+/* GET /api/rfid-events — polled by frontend every 1.5 s instead of SSE */
 esp_err_t api_rfid_events_get(httpd_req_t *req)
 {
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     hid_rfid_event_t ev = {0};
     hid_rfid_get_last_event(&ev);
-    char buf[200];
-    snprintf(buf, sizeof(buf),
-             "{\"seq\":%lu,\"uid\":\"%s\",\"name\":\"%s\","
-             "\"time\":\"%s\",\"status\":\"%s\"}",
-             (unsigned long)ev.seq,
-             ev.uid, ev.name, ev.time, ev.status);
-    return http_send_json(req, 200, buf);
+
+    /* BUG FIX (Bug 1): ev.uid / ev.name / ev.time / ev.status were sprintf'd
+     * directly into JSON with no escaping.  A name containing '"' or '\'
+     * produced malformed JSON, causing r.json() to throw on the frontend,
+     * the .catch to fire, and loadData() to never be called — so the page
+     * stopped refreshing on new RFID scans.  Use cJSON to build the object
+     * so all string fields are properly escaped automatically. */
+    cJSON *obj = cJSON_CreateObject();
+    if (!obj) return http_send_err(req, 500, "oom");
+    cJSON_AddNumberToObject(obj, "seq",    (double)(unsigned long)ev.seq);
+    cJSON_AddStringToObject(obj, "uid",    ev.uid);
+    cJSON_AddStringToObject(obj, "name",   ev.name);
+    cJSON_AddStringToObject(obj, "time",   ev.time);
+    cJSON_AddStringToObject(obj, "status", ev.status);
+    char *json_str = cJSON_PrintUnformatted(obj);
+    cJSON_Delete(obj);
+    esp_err_t ret = http_send_json(req, 200, json_str ? json_str : "{}");
+    free(json_str);
+    return ret;
 }
 
 /* GET /api/attendance
@@ -83,7 +95,7 @@ esp_err_t api_attendance_mark_post(httpd_req_t *req)
 }
 
 /* GET /api/attendance/delete?id=42 */
-esp_err_t api_attendance_delete_get(httpd_req_t *req)
+esp_err_t api_attendance_delete_handler(httpd_req_t *req)
 {
     if (!auth_check_with_class(req)) return http_send_err(req, 403, "no_class");
     char buf[12] = {0};
@@ -141,7 +153,11 @@ esp_err_t api_attendance_summary_get(httpd_req_t *req)
     int cn = atoi(cbuf);
     if (cn <= 0) return http_send_err(req, 400, "invalid_class");
     char *json = db_attendance_summary_json(cn, date);
-    esp_err_t ret = http_send_json(req, 200, json ? json : "{'present':0,'absent':0,'total':0}");
+    /* FIX-27: Fallback used single-quoted keys — invalid JSON that caused
+     * JSON.parse() SyntaxError on the client. Fixed to double-quoted keys.
+     * Also: free the heap-allocated json string after sending. */
+    esp_err_t ret = http_send_json(req, 200,
+        json ? json : "{\"present\":0,\"absent\":0,\"total\":0}");
     free(json);
     return ret;
 }

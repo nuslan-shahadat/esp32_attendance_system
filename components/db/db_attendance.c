@@ -21,7 +21,10 @@ static bool sb_init(StrBuf *sb, size_t n)
 static bool sb_append(StrBuf *sb, const char *s)
     { size_t sl=strlen(s); if(sb->len+sl+1>sb->cap){size_t nc=(sb->len+sl+1)*2;char*t=realloc(sb->buf,nc);if(!t)return false;sb->buf=t;sb->cap=nc;} memcpy(sb->buf+sb->len,s,sl+1); sb->len+=sl; return true; }
 static bool sb_appendf(StrBuf *sb, const char *fmt, ...)
-    { char tmp[512]; va_list ap; va_start(ap,fmt); vsnprintf(tmp,sizeof(tmp),fmt,ap); va_end(ap); return sb_append(sb,tmp); }
+    /* BUG FIX (Bug 5): The original 512-byte tmp buffer could silently truncate
+     * a student record with a heavily-escaped long name (~460 bytes).  Increased
+     * to 1024 to give a comfortable margin for the longest realistic record. */
+    { char tmp[1024]; va_list ap; va_start(ap,fmt); vsnprintf(tmp,sizeof(tmp),fmt,ap); va_end(ap); return sb_append(sb,tmp); }
 static bool sb_append_jstr(StrBuf *sb, const char *v)
     { sb_append(sb,"\""); if(v){char e[256];size_t i=0;while(*v&&i+2<sizeof(e)){unsigned char c=(unsigned char)*v++;if(c=='"'||c=='\\'){e[i++]='\\';e[i++]=c;}else if(c=='\n'){e[i++]='\\';e[i++]='n';}else e[i++]=c;} e[i]='\0';sb_append(sb,e);} return sb_append(sb,"\""); }
 
@@ -47,16 +50,43 @@ static void att_json_escape(const char *src, char *dst, size_t dst_len)
  * needs tiny DMA-capable DRAM allocations (one student / one record
  * at a time).
  * ─────────────────────────────────────────────────────────────── */
+/* FIX-33: The original implementation called cb() (TCP send) while holding
+ * db_lock(), which could stall for up to 30 s on a slow client, freezing
+ * RFID scanning and all other DB access.  Fixed by collecting the full JSON
+ * into a StrBuf under a short lock, then releasing the lock before sending. */
+/* db_attendance_stream_json — two-phase streaming with JOIN-based today query
+ *
+ * PERF FIX: The previous implementation used an N+1 query pattern for today's
+ * data — one prepared-statement lookup per student (500 lookups for 500 students)
+ * causing 1-2 s of pure SQLite CPU before any byte reached the browser.
+ *
+ * New approach:
+ *   Phase A — short DB lock:
+ *     3 COUNT queries (stats) + 1 LEFT JOIN (all students × today's attendance)
+ *     → collect into sb_today, unlock, send immediately.
+ *     Browser renders stats + today tab with no wait.
+ *   Phase B — second short DB lock:
+ *     Log queries (grouped by date) → collect into sb_log, unlock, send.
+ *     Log tab streams in while user is already viewing today's data.
+ *
+ * Neither lock is held during TCP I/O (cb calls), preserving FIX-33's
+ * guarantee that a slow client never blocks RFID scanning or other DB access.
+ */
 esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
 {
+    /* ── Phase A: stats + today tab ────────────────────────────────
+     * Single LEFT JOIN replaces 500 individual prepared-stmt lookups.
+     * ─────────────────────────────────────────────────────────────── */
+    StrBuf sb_today;
+    if (!sb_init(&sb_today, 16384)) return ESP_ERR_NO_MEM;
+
     db_lock();
     sqlite3 *db = db_handle();
-    esp_err_t ret = ESP_OK;
 
     char today[12];
     db_today_string(today, sizeof(today));
 
-    /* ── Stats (one small chunk) ── */
+    /* Stats: 3 fast indexed COUNT queries */
     int total = 0, present_td = 0, total_rec = 0;
     {
         sqlite3_stmt *s;
@@ -84,93 +114,104 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
         }
     }
 
-    char hdr[256];
-    snprintf(hdr, sizeof(hdr),
-             "{\"today_date\":\"%s\","
-             "\"stats\":{\"total\":%d,\"present\":%d,\"absent\":%d,\"records\":%d},"
-             "\"today\":[",
-             today, total, present_td, total - present_td, total_rec);
-    ret = cb(hdr, strlen(hdr), ctx);
-    if (ret != ESP_OK) { db_unlock(); return ret; }
+    /* BUG FIX (Bug 2): present_td counts ALL attendance rows for today (including
+     * students archived after scanning), while total counts only active students.
+     * If a student is archived after scanning, present_td > total → absent goes
+     * negative.  Clamp with MAX(0, ...) so the stats bar never shows "-1 Absent". */
+    int absent_td = (present_td > total) ? 0 : (total - present_td);
+    sb_appendf(&sb_today,
+        "{\"today_date\":\"%s\","
+        "\"stats\":{\"total\":%d,\"present\":%d,\"absent\":%d,\"records\":%d},"
+        "\"today\":[",
+        today, total, present_td, absent_td, total_rec);
 
-    /* ── Today tab: all students with present/absent status ──────────
-     * Option 3 fix: replaced LEFT JOIN (which required a temp B-tree
-     * for the ORDER BY) with a plain student scan + per-student
-     * attendance lookup, mirroring the pattern in db_students_stream_json.
-     * The new covering index idx_stu_class_active_name makes the student
-     * scan an in-order index walk — zero temp sort memory at any scale. */
+    /* Single LEFT JOIN — all students joined with today's attendance in one pass.
+     * Replaces the previous N+1 loop (500 individual lookups for 500 students). */
     {
-        /* Prepare per-student attendance lookup once; reset each iteration */
-        sqlite3_stmt *att = NULL;
-        sqlite3_prepare_v2(db,
-            "SELECT entry_time, status FROM attendance"
-            " WHERE card_uid=? AND class_num=? AND entry_date=? LIMIT 1",
-            -1, &att, NULL);
-
         sqlite3_stmt *s;
         if (sqlite3_prepare_v2(db,
-                "SELECT card_uid, name, roll, batchtime"
-                " FROM students WHERE class_num=? AND is_active=1"
-                " ORDER BY name",
+                "SELECT s.card_uid, s.name, s.roll, s.batchtime,"
+                "       a.entry_time, a.status"
+                " FROM students s"
+                " LEFT JOIN attendance a"
+                "   ON  a.card_uid  = s.card_uid"
+                "   AND a.class_num = s.class_num"
+                "   AND a.entry_date = ?"
+                " WHERE s.class_num = ? AND s.is_active = 1"
+                " ORDER BY s.name",
                 -1, &s, NULL) == SQLITE_OK) {
-            sqlite3_bind_int(s, 1, class_num);
-
+            sqlite3_bind_text(s, 1, today,      -1, SQLITE_STATIC);
+            sqlite3_bind_int(s,  2, class_num);
             bool first = true;
             char esc_uid[64], esc_name[160], esc_roll[64], esc_batch[48], esc_time[32];
-            char row[400];
-
             while (sqlite3_step(s) == SQLITE_ROW) {
                 const char *uid   = (const char *)sqlite3_column_text(s, 0);
                 const char *name  = (const char *)sqlite3_column_text(s, 1);
                 const char *roll  = (const char *)sqlite3_column_text(s, 2);
                 const char *batch = (const char *)sqlite3_column_text(s, 3);
-
-                /* Per-student attendance lookup via idx_att_uid — no JOIN */
-                const char *etime  = NULL;
-                const char *status = NULL;
-                bool present = false;
-                if (att) {
-                    sqlite3_reset(att);
-                    sqlite3_bind_text(att, 1, uid ? uid : "", -1, SQLITE_TRANSIENT);
-                    sqlite3_bind_int(att,  2, class_num);
-                    sqlite3_bind_text(att, 3, today, -1, SQLITE_STATIC);
-                    if (sqlite3_step(att) == SQLITE_ROW) {
-                        etime  = (const char *)sqlite3_column_text(att, 0);
-                        status = (const char *)sqlite3_column_text(att, 1);
-                        present = (status && strcmp(status, "present") == 0);
-                    }
-                }
+                const char *etime = (const char *)sqlite3_column_text(s, 4);
+                const char *st    = (const char *)sqlite3_column_text(s, 5);
+                bool present      = (st && strcmp(st, "present") == 0);
 
                 att_json_escape(uid   ? uid   : "", esc_uid,   sizeof(esc_uid));
                 att_json_escape(name  ? name  : "", esc_name,  sizeof(esc_name));
                 att_json_escape(roll  ? roll  : "", esc_roll,  sizeof(esc_roll));
                 att_json_escape(batch ? batch : "", esc_batch, sizeof(esc_batch));
                 att_json_escape(etime ? etime : "", esc_time,  sizeof(esc_time));
-
-                int n = snprintf(row, sizeof(row),
+                sb_appendf(&sb_today,
                     "%s{\"uid\":\"%s\",\"name\":\"%s\",\"roll\":\"%s\","
                     "\"batch\":\"%s\",\"present\":%s,\"time\":\"%s\"}",
                     first ? "" : ",",
                     esc_uid, esc_name, esc_roll, esc_batch,
                     present ? "true" : "false", esc_time);
                 first = false;
-
-                if (n > 0 && n < (int)sizeof(row)) {
-                    ret = cb(row, (size_t)n, ctx);
-                    if (ret != ESP_OK) break;
-                }
             }
             sqlite3_finalize(s);
         }
-        if (att) sqlite3_finalize(att);
     }
-    if (ret != ESP_OK) { db_unlock(); return ret; }
 
-    /* ── Transition: close today array, open log array ── */
-    ret = cb("],\"log\":[", 9, ctx);
-    if (ret != ESP_OK) { db_unlock(); return ret; }
+    /* Close today array; open log array — Phase B will fill and close it */
+    sb_append(&sb_today, "],\"log\":[");
 
-    /* ── Log tab: grouped by date, descending ── */
+    db_unlock();
+
+    /* Send Phase A chunk immediately — browser renders stats + today tab NOW,
+     * before a single log query has been issued. */
+    esp_err_t ret = cb(sb_today.buf, sb_today.len, ctx);
+    free(sb_today.buf);
+    if (ret != ESP_OK) return ret;
+
+    /* ── Phase B: log tab (grouped by date) ────────────────────────
+     * Second short lock — log queries are independent of today data.
+     * ─────────────────────────────────────────────────────────────── */
+    StrBuf sb_log;
+    if (!sb_init(&sb_log, 8192)) {
+        cb("]}", 2, ctx); /* close the JSON gracefully */
+        return ESP_ERR_NO_MEM;
+    }
+
+    db_lock();
+    db = db_handle();
+
+    /* BUG FIX (Bug 3): The original absent_count was computed as
+     *   SUM(CASE WHEN status!='present' THEN 1 ELSE 0 END)
+     * which always returned 0 because every row is inserted with
+     * status='present'.  The correct absent count for a given date is
+     * (active_students - present_count).  Query the total once and reuse. */
+    int log_total_students = 0;
+    {
+        sqlite3_stmt *ts;
+        char tsql[128];
+        snprintf(tsql, sizeof(tsql),
+                 "SELECT COUNT(*) FROM students WHERE class_num=%d AND is_active=1",
+                 class_num);
+        if (sqlite3_prepare_v2(db, tsql, -1, &ts, NULL) == SQLITE_OK) {
+            if (sqlite3_step(ts) == SQLITE_ROW)
+                log_total_students = sqlite3_column_int(ts, 0);
+            sqlite3_finalize(ts);
+        }
+    }
+
     {
         sqlite3_stmt *ds;
         if (sqlite3_prepare_v2(db,
@@ -178,49 +219,42 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
                 " WHERE class_num=? ORDER BY entry_date DESC",
                 -1, &ds, NULL) == SQLITE_OK) {
             sqlite3_bind_int(ds, 1, class_num);
-
             bool first_date = true;
             char esc_date[24];
-            char date_hdr[80];
 
             while (sqlite3_step(ds) == SQLITE_ROW) {
-                const char *date = (const char *)sqlite3_column_text(ds, 0);
-                if (!date) continue;
+                const char *date_raw = (const char *)sqlite3_column_text(ds, 0);
+                if (!date_raw) continue;
+                /* FIX-32: stable local copy before ds cursor advances */
+                char date[16];
+                strncpy(date, date_raw, sizeof(date) - 1);
+                date[sizeof(date) - 1] = '\0';
 
                 att_json_escape(date, esc_date, sizeof(esc_date));
-
-                /* Emit date header — we'll patch in counts at the end via a
-                 * placeholder approach: send header with known counts by
-                 * running the count query first (tiny query, 1 row). */
                 int p_cnt = 0, a_cnt = 0;
                 {
                     sqlite3_stmt *cnt;
                     if (sqlite3_prepare_v2(db,
                             "SELECT"
-                            "  SUM(CASE WHEN status='present' THEN 1 ELSE 0 END),"
-                            "  SUM(CASE WHEN status!='present' THEN 1 ELSE 0 END)"
+                            "  SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)"
                             " FROM attendance WHERE class_num=? AND entry_date=?",
                             -1, &cnt, NULL) == SQLITE_OK) {
                         sqlite3_bind_int(cnt,  1, class_num);
                         sqlite3_bind_text(cnt, 2, date, -1, SQLITE_STATIC);
                         if (sqlite3_step(cnt) == SQLITE_ROW) {
                             p_cnt = sqlite3_column_int(cnt, 0);
-                            a_cnt = sqlite3_column_int(cnt, 1);
                         }
                         sqlite3_finalize(cnt);
                     }
+                    /* absent = active students not scanned that day */
+                    a_cnt = (p_cnt < log_total_students) ? (log_total_students - p_cnt) : 0;
                 }
-
-                int hn = snprintf(date_hdr, sizeof(date_hdr),
-                    "%s{\"date\":\"%s\",\"present_count\":%d,\"absent_count\":%d,\"records\":[",
-                    first_date ? "" : ",",
-                    esc_date, p_cnt, a_cnt);
+                sb_appendf(&sb_log,
+                    "%s{\"date\":\"%s\",\"present_count\":%d,\"absent_count\":%d,"
+                    "\"records\":[",
+                    first_date ? "" : ",", esc_date, p_cnt, a_cnt);
                 first_date = false;
 
-                ret = cb(date_hdr, (size_t)hn, ctx);
-                if (ret != ESP_OK) break;
-
-                /* Records for this date, one chunk per row */
                 sqlite3_stmt *rs;
                 if (sqlite3_prepare_v2(db,
                         "SELECT id,card_uid,name,roll,batchtime,entry_time,status"
@@ -229,12 +263,9 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
                         -1, &rs, NULL) == SQLITE_OK) {
                     sqlite3_bind_int(rs,  1, class_num);
                     sqlite3_bind_text(rs, 2, date, -1, SQLITE_STATIC);
-
                     bool first_rec = true;
                     char esc_uid[64], esc_name[160], esc_roll[64];
                     char esc_batch[48], esc_time[32], esc_st[16];
-                    char rec[512];
-
                     while (sqlite3_step(rs) == SQLITE_ROW) {
                         int         rid    = sqlite3_column_int(rs, 0);
                         const char *ruid   = (const char *)sqlite3_column_text(rs, 1);
@@ -243,44 +274,34 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
                         const char *rbatch = (const char *)sqlite3_column_text(rs, 4);
                         const char *rtime  = (const char *)sqlite3_column_text(rs, 5);
                         const char *rst    = (const char *)sqlite3_column_text(rs, 6);
-
                         att_json_escape(ruid   ? ruid   : "", esc_uid,   sizeof(esc_uid));
                         att_json_escape(rname  ? rname  : "", esc_name,  sizeof(esc_name));
                         att_json_escape(rroll  ? rroll  : "", esc_roll,  sizeof(esc_roll));
                         att_json_escape(rbatch ? rbatch : "", esc_batch, sizeof(esc_batch));
                         att_json_escape(rtime  ? rtime  : "", esc_time,  sizeof(esc_time));
-                        att_json_escape(rst    ? rst    : "", esc_st,    sizeof(esc_st));
-
-                        int n = snprintf(rec, sizeof(rec),
+                        att_json_escape(rst    ? rst    : "present", esc_st, sizeof(esc_st));
+                        sb_appendf(&sb_log,
                             "%s{\"id\":%d,\"uid\":\"%s\",\"name\":\"%s\","
                             "\"roll\":\"%s\",\"batch\":\"%s\","
                             "\"time\":\"%s\",\"status\":\"%s\"}",
                             first_rec ? "" : ",",
-                            rid, esc_uid, esc_name, esc_roll,
-                            esc_batch, esc_time, esc_st);
+                            rid, esc_uid, esc_name, esc_roll, esc_batch,
+                            esc_time, esc_st);
                         first_rec = false;
-
-                        if (n > 0 && n < (int)sizeof(rec)) {
-                            ret = cb(rec, (size_t)n, ctx);
-                            if (ret != ESP_OK) break;
-                        }
                     }
                     sqlite3_finalize(rs);
                 }
-                if (ret != ESP_OK) break;
-
-                /* Close records array and date object */
-                ret = cb("]}", 2, ctx);
-                if (ret != ESP_OK) break;
+                sb_append(&sb_log, "]}");
             }
             sqlite3_finalize(ds);
         }
     }
-    if (ret != ESP_OK) { db_unlock(); return ret; }
 
-    /* ── Close log array and root object ── */
-    ret = cb("]}", 2, ctx);
+    sb_append(&sb_log, "]}");
     db_unlock();
+
+    ret = cb(sb_log.buf, sb_log.len, ctx);
+    free(sb_log.buf);
     return ret;
 }
 
@@ -561,7 +582,7 @@ char *db_attendance_json(int class_num)
 
     sb_appendf(&sb, "{\"today_date\":\"%s\"", today);
     sb_appendf(&sb, ",\"stats\":{\"total\":%d,\"present\":%d,\"absent\":%d,\"records\":%d}",
-               total, present_td, total - present_td, total_rec);
+               total, present_td, (present_td > total ? 0 : total - present_td), total_rec);
 
     /* Today tab: all students with present/absent status */
     sb_append(&sb, ",\"today\":[");
@@ -1132,3 +1153,93 @@ char *db_export_all_csv(void)
     db_unlock();
     return buf;
 }
+
+/* ── Streaming CSV import helpers ────────────────────────────────
+ *
+ * These let the HTTP handler process rows one at a time from a small
+ * socket chunk buffer instead of loading the whole CSV into a 128 KB
+ * heap block (which fails on targets without PSRAM).
+ * ──────────────────────────────────────────────────────────────── */
+
+void db_import_begin(void)
+{
+    db_lock();
+    db_exec_raw("BEGIN;");
+}
+
+void db_import_end(void)
+{
+    db_exec_raw("COMMIT;");
+    db_unlock();
+}
+
+/* Process one data row.  fields[] are mutable pointers into a
+ * stack-allocated line buffer — use SQLITE_TRANSIENT so SQLite copies
+ * them before the buffer is reused for the next line. */
+void db_import_process_line(int class_num, const char *type,
+                            char **fields, int nf,
+                            db_import_result_t *result)
+{
+    if (!fields || nf == 0) { result->skipped++; return; }
+
+    if (strcmp(type, "students") == 0) {
+        char *uid   = nf > 0 ? fields[0] : "";
+        char *name  = nf > 1 ? fields[1] : "";
+        char *roll  = nf > 2 ? fields[2] : "";
+        char *batch = nf > 3 ? fields[3] : "";
+        if (!uid || strlen(uid) == 0) { result->skipped++; return; }
+
+        sqlite3_stmt *s;
+        if (sqlite3_prepare_v2(db_handle(),
+                "INSERT OR IGNORE INTO students"
+                "(class_num,card_uid,name,roll,batchtime)"
+                " VALUES(?,?,?,?,?)",
+                -1, &s, NULL) == SQLITE_OK) {
+            sqlite3_bind_int (s, 1, class_num);
+            sqlite3_bind_text(s, 2, uid,   -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 3, name,  -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 4, roll,  -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 5, batch, -1, SQLITE_TRANSIENT);
+            sqlite3_step(s);
+            if (sqlite3_changes(db_handle()) > 0) result->added++;
+            else result->skipped++;
+            sqlite3_finalize(s);
+        } else {
+            result->skipped++;
+        }
+    } else {
+        /* attendance: uid,name,roll,batch,date,time,status */
+        char *uid    = nf > 0 ? fields[0] : "";
+        char *name   = nf > 1 ? fields[1] : "";
+        char *roll   = nf > 2 ? fields[2] : "";
+        char *batch  = nf > 3 ? fields[3] : "";
+        char *date   = nf > 4 ? fields[4] : "";
+        char *ttime  = nf > 5 ? fields[5] : "";
+        char *status = nf > 6 ? fields[6] : "present";
+        if (!uid||strlen(uid)==0||!date||strlen(date)==0) { result->skipped++; return; }
+        if (!status || strlen(status) == 0) status = "present";
+
+        sqlite3_stmt *s;
+        if (sqlite3_prepare_v2(db_handle(),
+                "INSERT OR IGNORE INTO attendance"
+                "(class_num,card_uid,name,roll,batchtime,entry_date,entry_time,status)"
+                " VALUES(?,?,?,?,?,?,?,?)",
+                -1, &s, NULL) == SQLITE_OK) {
+            sqlite3_bind_int (s, 1, class_num);
+            sqlite3_bind_text(s, 2, uid,    -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 3, name,   -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 4, roll,   -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 5, batch,  -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 6, date,   -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 7, ttime,  -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(s, 8, status, -1, SQLITE_TRANSIENT);
+            sqlite3_step(s);
+            if (sqlite3_changes(db_handle()) > 0) result->added++;
+            else result->skipped++;
+            sqlite3_finalize(s);
+        } else {
+            result->skipped++;
+        }
+    }
+}
+

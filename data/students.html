@@ -19,67 +19,7 @@
     }
     .name-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
 
-    /* ── Detail popup (zero-padding, sections own spacing) ── */
-    #detail-modal .modal {
-      max-width: 640px;
-      padding: 0;
-      overflow-y: auto;
-      max-height: 92vh;
-    }
-    .dm-close {
-      position: absolute; top: .8rem; right: .8rem;
-      background: none; border: 1px solid var(--border); border-radius: 3px;
-      padding: .2rem .55rem; cursor: pointer; color: var(--muted);
-      font-family: var(--font); font-size: .68rem; z-index: 1;
-      transition: all .15s;
-    }
-    .dm-close:hover { color: var(--danger); border-color: var(--danger); }
-
-    /* avatar strip */
-    .dm-header {
-      position: relative;
-      display: flex; align-items: center; gap: 1rem;
-      padding: 1.1rem 1.3rem 1rem;
-      background: linear-gradient(135deg,rgba(0,200,150,.07) 0%,transparent 70%);
-      border-bottom: 1px solid var(--border);
-    }
-    .dm-avatar {
-      width: 50px; height: 50px; border-radius: 10px; flex-shrink: 0;
-      background: rgba(0,200,150,.12); border: 1px solid rgba(0,200,150,.28);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.2rem; font-weight: bold; color: var(--accent);
-    }
-    .dm-name { font-size: 1rem; font-weight: bold; color: var(--text); }
-    .dm-sub  { font-size: .65rem; color: var(--muted); letter-spacing: .07em; margin-top: .22rem; }
-
-    /* attendance bar strip */
-    .dm-att-bar {
-      display: flex; align-items: center; gap: .85rem;
-      padding: .75rem 1.3rem;
-      background: var(--stat-bg);
-      border-bottom: 1px solid var(--border);
-    }
-    .dm-att-pct { font-size: 1.5rem; font-weight: bold; min-width: 54px; }
-    .dm-att-lbl { font-size: .57rem; color: var(--muted); text-transform: uppercase; letter-spacing: .13em; margin-top: .1rem; }
-    .dm-att-wrap { flex: 1; }
-    .dm-att-note { font-size: .6rem; color: var(--muted); margin-top: .3rem; }
-
-    /* key-value grid */
-    .dm-fields {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-      border-bottom: 1px solid var(--border);
-    }
-    .dm-field { padding: .65rem 1.1rem; border-right: 1px solid var(--border); }
-    .dm-field:last-child { border-right: none; }
-    .dm-fkey { font-size: .55rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: .2rem; }
-    .dm-fval { font-size: .82rem; color: var(--text); word-break: break-all; }
-    .dm-fval.accent { color: var(--accent); font-weight: bold; }
-    .dm-fval.warn   { color: var(--warn); }
-
-    @media (max-width: 520px) {
-      .dm-fields { grid-template-columns: 1fr 1fr; }
-      .dm-field  { border-right: none; }
-    }
+    /* ── Clickable name link ── */
   </style>
 </head>
 <body>
@@ -99,7 +39,7 @@
 <!-- Confirm modal -->
 <div class="confirm-bg" id="confirm-modal">
   <div class="confirm-box">
-    <p><strong id="confirm-label"></strong></p>
+    <p id="confirm-text"><strong id="confirm-label"></strong></p>
     <div class="confirm-actions">
       <button class="confirm-yes" id="confirm-yes-btn">Confirm</button>
       <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
@@ -135,36 +75,7 @@
   </div>
 </div>
 
-<!-- ════════════ Student Detail Popup ════════════ -->
-<div class="modal-bg" id="detail-modal">
-  <div class="modal" style="position:relative">
 
-    <button class="dm-close" onclick="closeModal('detail-modal')">&#10005; Close</button>
-
-    <div class="dm-header">
-      <div class="dm-avatar" id="dm-avatar">?</div>
-      <div>
-        <div class="dm-name" id="dm-name">—</div>
-        <div class="dm-sub"  id="dm-sub">—</div>
-      </div>
-    </div>
-
-    <div class="dm-att-bar" id="dm-att-bar" style="display:none">
-      <div>
-        <div class="dm-att-pct" id="dm-pct">—</div>
-        <div class="dm-att-lbl">Attendance</div>
-      </div>
-      <div class="dm-att-wrap">
-        <div class="pct-bar-wrap"><div class="pct-bar" id="dm-bar" style="width:0%"></div></div>
-        <div class="dm-att-note" id="dm-pct-note"></div>
-      </div>
-    </div>
-
-    <div class="dm-fields" id="dm-fields"></div>
-
-  </div>
-</div>
-<!-- ════════════════════════════════════════════ -->
 
 <div class="page-wrap">
   <div class="card">
@@ -214,8 +125,12 @@
       if (!s.class) { location.href = '/select-class.html'; return; }
       g_class = s.class;
       loadBatches();
-      loadSchema();
-      loadStudents();
+      // FIX-11: Chain loadStudents() after loadSchema() resolves so g_schema
+      // is always populated before the first renderTable() call. Previously they
+      // ran concurrently and schema columns could be missing on first render.
+      loadSchema().then(function () {
+        loadStudents();
+      });
     }).catch(function () { location.href = '/login.html'; });
   });
 
@@ -233,7 +148,8 @@
   }
 
   function loadSchema() {
-    api('/api/schema').then(function (s) {
+    // FIX-11: Return the promise so callers can chain .then(loadStudents).
+    return api('/api/schema').then(function (s) {
       g_schema = (s.student || []).filter(function (c) {
         return !c.system && !c['default'] &&
                ['name','roll','card_uid','batchtime'].indexOf(c.key) === -1 && c.ask;
@@ -284,15 +200,15 @@
         var pctColor = pct !== null
           ? (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red')
           : 'sv-grey';
-        var sJson = JSON.stringify(s).replace(/"/g, '&quot;');
+        // FIX-12: sJson was computed here but never used — removed.
 
         var tr = document.createElement('tr');
         tr.innerHTML =
           '<td class="num-col">' + rowNum + '</td>' +
           '<td data-label="Name">' +
-            '<span class="name-link" onclick="openDetail(' + sJson + ')">' +
+            '<a class="name-link" href="/student-detail.html?uid=' + encodeURIComponent(s.uid) + '">' +
               esc(s.name) +
-            '</span>' +
+            '</a>' +
           '</td>' +
           '<td data-label="Roll">'  + esc(s.roll || '—') + '</td>' +
           '<td data-label="Batch">' + esc(s.batchtime || '—') + '</td>' +
@@ -363,14 +279,12 @@
     rows.forEach(function (s, i) {
       var pct      = s.att_pct != null ? Math.round(s.att_pct) : null;
       var pctColor = pct !== null ? (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red') : 'sv-grey';
-      var sJson    = JSON.stringify(s).replace(/"/g, '&quot;');
+      // FIX-12: sJson was computed here but never used — removed.
       var tr       = document.createElement('tr');
 
       tr.innerHTML =
         '<td class="num-col">' + (i + 1) + '</td>' +
-        '<td data-label="Name">' +
-          '<span class="name-link" onclick="openDetail(' + sJson + ')">' + esc(s.name) + '</span>' +
-        '</td>' +
+        '<td data-label="Name"><a class="name-link" href="/student-detail.html?uid=' + encodeURIComponent(s.uid) + '">' + esc(s.name) + '</a></td>' +
         '<td data-label="Roll">'  + esc(s.roll || '—') + '</td>' +
         '<td data-label="Batch">' + esc(s.batchtime || '—') + '</td>' +
         '<td data-label="Att%" class="att-pct ' + pctColor + '">' +
@@ -385,77 +299,63 @@
     });
   }
 
+  // FIX-10: Use an index map so no student data is ever interpolated raw into
+  // an inline onclick string. A crafted UID could execute arbitrary JS.
+  // FIX-12: sJson was computed in onItem and renderTable() but never used — removed.
+  var g_actionMap = {};
+  var g_actionIdx = 0;
+
   function actionsHtml(s) {
-    return '<button class="act-btn" onclick="openEdit(' + JSON.stringify(s).replace(/"/g, '&quot;') + ')">Edit</button> ' +
-           '<button class="act-btn act-btn-del" onclick="doDelete(\'' + s.uid + '\',\'' + esc(s.name) + '\')">Delete</button>';
-  }
-
-  /* ══════════════ Detail Popup ══════════════ */
-  function openDetail(s) {
-    var initials = (s.name || '?').trim().split(/\s+/)
-                    .map(function (w) { return w[0] || ''; })
-                    .join('').slice(0, 2).toUpperCase();
-    document.getElementById('dm-avatar').textContent = initials || '?';
-    document.getElementById('dm-name').textContent   = s.name || '—';
-    document.getElementById('dm-sub').textContent    =
-      'Roll: ' + (s.roll || '—') + '  ·  Batch: ' + (s.batchtime || '—') + '  ·  UID: ' + (s.uid || '—');
-
-    var pct    = s.att_pct != null ? Math.round(s.att_pct) : null;
-    var attBar = document.getElementById('dm-att-bar');
-    if (pct !== null) {
-      attBar.style.display = 'flex';
-      var pctEl = document.getElementById('dm-pct');
-      pctEl.textContent = pct + '%';
-      pctEl.className   = 'dm-att-pct ' + (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red');
-      var barEl = document.getElementById('dm-bar');
-      barEl.style.width = pct + '%';
-      barEl.className   = 'pct-bar ' + (pct >= 75 ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red');
-      document.getElementById('dm-pct-note').textContent = pct >= 75 ? '✓ Above threshold' : '⚠ Below threshold';
-    } else {
-      attBar.style.display = 'none';
-    }
-
-    var coreFields = [
-      { k: 'Card UID', v: s.uid       || '—' },
-      { k: 'Roll No',  v: s.roll      || '—' },
-      { k: 'Batch',    v: s.batchtime || '—' },
-      { k: 'Status',   v: s.archived ? 'Archived' : 'Active',
-        cls: s.archived ? 'warn' : 'accent' },
-      { k: 'Sessions', v: s.sessions != null ? String(s.sessions) : '—' },
-    ];
-    var fHtml = coreFields.map(function (f) {
-      return '<div class="dm-field"><div class="dm-fkey">' + esc(f.k) + '</div>' +
-             '<div class="dm-fval' + (f.cls ? ' ' + f.cls : '') + '">' + esc(f.v) + '</div></div>';
-    }).join('');
-    g_schema.forEach(function (col) {
-      if (['name','roll','uid','card_uid','batchtime'].indexOf(col.key) !== -1) return;
-      var v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
-      fHtml += '<div class="dm-field"><div class="dm-fkey">' + esc(col.label) + '</div>' +
-               '<div class="dm-fval">' + esc(String(v)) + '</div></div>';
-    });
-    document.getElementById('dm-fields').innerHTML = fHtml;
-
-    openModal('detail-modal');
+    var key = 'k' + (g_actionIdx++);
+    g_actionMap[key] = s;
+    return '<button class="act-btn" onclick="openEdit(g_actionMap[\'' + key + '\'])">Edit</button> ' +
+           '<button class="act-btn act-btn-del" onclick="doDelete(g_actionMap[\'' + key + '\'].uid, g_actionMap[\'' + key + '\'].name)">Delete</button>';
   }
 
   /* ══════════════ Archive / edit / delete ══════════════ */
   function doArchive(uid, name) {
     confirmAction('Archive ' + name + '?', function () {
       api('/api/students/archive?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
-        .then(function () { showToast('Archived'); loadStudents(); })
+        .then(function () {
+          // Optimistic: mark archived locally
+          for (var i = 0; i < g_students.length; i++) {
+            if (g_students[i].uid === uid) { g_students[i].archived = 1; break; }
+          }
+          renderTable();
+          showToast('Archived');
+        })
         .catch(function (e) { showToast(e.message, true); });
     });
   }
   function doRestore(uid) {
     api('/api/students/restore?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
-      .then(function () { showToast('Restored'); loadStudents(); })
+      .then(function () {
+        for (var i = 0; i < g_students.length; i++) {
+          if (g_students[i].uid === uid) { g_students[i].archived = 0; break; }
+        }
+        renderTable();
+        showToast('Restored');
+      })
       .catch(function (e) { showToast(e.message, true); });
   }
   function doDelete(uid, name) {
     confirmAction('Permanently delete ' + name + '? This cannot be undone.', function () {
-      api('/api/students/delete?uid=' + encodeURIComponent(uid) + '&c=' + g_class)
-        .then(function () { showToast('Deleted'); loadStudents(); })
-        .catch(function (e) { showToast(e.message, true); });
+      // Optimistic: remove from local state immediately
+      var removed = null, removedIdx = -1;
+      for (var i = 0; i < g_students.length; i++) {
+        if (g_students[i].uid === uid) { removed = g_students[i]; removedIdx = i; break; }
+      }
+      if (removedIdx >= 0) g_students.splice(removedIdx, 1);
+      renderTable();
+      showToast('Deleted');
+
+      api('/api/students/delete?uid=' + encodeURIComponent(uid) + '&c=' + g_class, 'DELETE')
+        .catch(function (e) {
+          // Revert: put student back
+          if (removed && removedIdx >= 0) g_students.splice(removedIdx, 0, removed);
+          renderTable();
+          showToast(e.message, true);
+        });
     });
   }
 
@@ -479,9 +379,32 @@
       batchtime: document.getElementById('em-batch').value,
     };
     if (!body.name || !body.roll || !body.card_uid) { showToast('Fill all fields', true); return; }
-    api('/api/students/edit', 'POST', body)
-      .then(function () { closeModal('edit-modal'); showToast('Updated'); loadStudents(); })
-      .catch(function (e) { showToast(e.message, true); });
+
+    // Optimistic: apply change in local state immediately
+    var origUid = body.uid_orig;
+    var backup = null, idx = -1;
+    for (var i = 0; i < g_students.length; i++) {
+      if ((g_students[i].uid || g_students[i].card_uid) === origUid) {
+        backup = Object.assign({}, g_students[i]);
+        idx = i;
+        g_students[i] = Object.assign({}, g_students[i], {
+          name: body.name, roll: body.roll,
+          uid: body.card_uid, card_uid: body.card_uid,
+          batchtime: body.batchtime
+        });
+        break;
+      }
+    }
+    closeModal('edit-modal');
+    renderTable();
+    showToast('Updated');
+
+    api('/api/students/edit', 'POST', body).catch(function (e) {
+      // Revert on failure
+      if (idx >= 0 && backup) g_students[idx] = backup;
+      renderTable();
+      showToast(e.message, true);
+    });
   }
 
   function esc(v) {

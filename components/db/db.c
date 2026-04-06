@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <errno.h>
 
 static const char *TAG = "db";
 
@@ -198,7 +199,12 @@ int db_init(const db_spi_config_t *spi)
     esp_err_t ret = sd_mount(spi);
     if (ret != ESP_OK) return ret;
 
-    mkdir(SD_MOUNT "/sd", 0775);   // ensure backup directory exists
+    /* FIX-31: Check mkdir return — failure (other than EEXIST) means nightly
+     * backups will silently fail; operator must investigate the SD card. */
+    if (mkdir(SD_MOUNT "/sd", 0775) != 0 && errno != EEXIST) {
+        ESP_LOGW(TAG, "db_init: failed to create backup dir '%s': errno=%d",
+                 SD_MOUNT "/sd", errno);
+    }
 
     {
     FILE *touch = fopen(DB_PATH, "ab");   /* creates if not exist, no-op if exists */
@@ -224,10 +230,14 @@ int db_init(const db_spi_config_t *spi)
     }
     if (!s_db || rc != SQLITE_OK) return ESP_FAIL;
 
-    /* Pragmas */
+    /* Pragmas
+     * FIX-28: synchronous=OFF risks database corruption on power loss because
+     * SQLite does not wait for pages to reach storage. NORMAL is safe with WAL
+     * (committed transactions survive crashes) and is still much faster than FULL.
+     * WAL also improves concurrent read performance. */
     db_lock();
-    db_exec_raw("PRAGMA journal_mode=DELETE;");
-    db_exec_raw("PRAGMA synchronous=OFF;");
+    db_exec_raw("PRAGMA journal_mode=WAL;");
+    db_exec_raw("PRAGMA synchronous=NORMAL;");
     db_exec_raw("PRAGMA cache_size=64;");
     db_exec_raw("PRAGMA temp_store=MEMORY;");
     db_exec_raw("PRAGMA foreign_keys=ON;");
@@ -293,10 +303,16 @@ void db_sntp_sync(void)
      * seconds on a busy network.  30 s gives enough headroom for the full
      * resolve → connect → response round-trip. */
     esp_err_t err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(30000));
-    if (err == ESP_OK)
+    if (err == ESP_OK) {
         ESP_LOGI(TAG, "NTP synced");
-    else
+        /* FIX-36: Persist success so the UI can confirm the clock is good */
+        db_config_set("ntp_synced", "1");
+    } else {
         ESP_LOGW(TAG, "NTP sync timed out — time may be inaccurate");
+        /* FIX-36: Persist failure — UI will show a warning banner alerting
+         * the operator that attendance timestamps may be year-2000 garbage */
+        db_config_set("ntp_synced", "0");
+    }
 }
 
 void db_get_localtime(struct tm *out)
@@ -323,6 +339,11 @@ void db_now_time_string(char *buf, size_t len)
 void db_free(void *ptr) { free(ptr); }
 
 /* ── Backup ──────────────────────────────────────────────────── */
+/* FIX-30: Use SQLite Online Backup API instead of closing the DB, doing a
+ * raw file copy, then reopening.  The old approach held the mutex for the
+ * entire multi-megabyte copy, freezing the web UI and RFID scanner.
+ * The online backup API copies pages incrementally, releasing the mutex
+ * between steps so other tasks can proceed. */
 void db_sd_backup(void)
 {
     char today[12];
@@ -337,43 +358,39 @@ void db_sd_backup(void)
         return;
     }
 
-    /* Close DB, copy file, reopen */
-    db_lock();
-    if (s_db) { sqlite3_close(s_db); s_db = NULL; }
-
-    FILE *src = fopen(DB_PATH, "rb");
-    FILE *dst = fopen(bak_path, "wb");
-    if (src && dst) {
-        uint8_t buf[512];
-        size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), src)) > 0)
-            fwrite(buf, 1, n, dst);
-        ESP_LOGI(TAG, "Backup written: %s", bak_path);
-    } else {
-        ESP_LOGW(TAG, "Backup failed to open files");
-    }
-    if (src) fclose(src);
-    if (dst) fclose(dst);
-
-    /*
-     * FIX: Check sqlite3_open return code before calling db_exec_raw.
-     * Previously, if the open failed, s_db could be NULL/invalid and the
-     * subsequent PRAGMA calls would dereference a null pointer and crash.
-     */
-    int rc = sqlite3_open(DB_PATH, &s_db);
-    if (rc != SQLITE_OK) {
-        ESP_LOGE(TAG, "db_sd_backup: failed to reopen DB after backup: %s",
-                 sqlite3_errmsg(s_db));
-        sqlite3_close(s_db);
-        s_db = NULL;
-        db_unlock();
+    sqlite3 *dst_db = NULL;
+    if (sqlite3_open(bak_path, &dst_db) != SQLITE_OK) {
+        ESP_LOGW(TAG, "Backup: failed to open destination: %s", bak_path);
+        if (dst_db) sqlite3_close(dst_db);
         return;
     }
-    db_exec_raw("PRAGMA journal_mode=DELETE;");
-    db_exec_raw("PRAGMA synchronous=OFF;");
-    db_exec_raw("PRAGMA cache_size=64;");
-    db_exec_raw("PRAGMA temp_store=MEMORY;");
+
+    db_lock();
+    sqlite3_backup *bkp = sqlite3_backup_init(dst_db, "main", s_db, "main");
     db_unlock();
+
+    if (!bkp) {
+        ESP_LOGW(TAG, "Backup: sqlite3_backup_init failed");
+        sqlite3_close(dst_db);
+        return;
+    }
+
+    int rc;
+    do {
+        db_lock();
+        rc = sqlite3_backup_step(bkp, 32);   /* copy 32 pages per step */
+        db_unlock();
+        if (rc == SQLITE_OK || rc == SQLITE_BUSY || rc == SQLITE_LOCKED)
+            vTaskDelay(pdMS_TO_TICKS(5));    /* yield between steps */
+    } while (rc == SQLITE_OK || rc == SQLITE_BUSY || rc == SQLITE_LOCKED);
+
+    sqlite3_backup_finish(bkp);
+    sqlite3_close(dst_db);
+
+    if (rc == SQLITE_DONE)
+        ESP_LOGI(TAG, "Backup written: %s", bak_path);
+    else
+        ESP_LOGW(TAG, "Backup incomplete, rc=%d", rc);
 }
 
 /* ── Status JSON ─────────────────────────────────────────────── */

@@ -151,8 +151,11 @@ int db_class_add(int class_num)
 
 int db_class_delete(int class_num)
 {
+    /* FIX-29: Wrap all four DELETEs in a single transaction.  Without this,
+     * a power loss between any two statements leaves orphaned rows in the DB. */
     db_lock();
     char sql[120];
+    db_exec_raw("BEGIN;");
     snprintf(sql,sizeof(sql),"DELETE FROM students   WHERE class_num=%d", class_num);
     db_exec_raw(sql);
     snprintf(sql,sizeof(sql),"DELETE FROM attendance WHERE class_num=%d", class_num);
@@ -161,6 +164,7 @@ int db_class_delete(int class_num)
     db_exec_raw(sql);
     snprintf(sql,sizeof(sql),"DELETE FROM classes    WHERE class_num=%d", class_num);
     db_exec_raw(sql);
+    db_exec_raw("COMMIT;");
     db_unlock();
     return 0;
 }

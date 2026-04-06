@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Student Detail — Attendance</title>
+  <link rel="stylesheet" href="/shared.css">
+  <style>
+    .page-wrap { width: 100%; max-width: 960px; }
+
+    /* ── Breadcrumb ─────────────────────────────────────── */
+    .breadcrumb {
+      display: flex; align-items: center; gap: .5rem;
+      font-size: .72rem; color: var(--muted); margin-bottom: 1.1rem;
+    }
+    .breadcrumb a { color: var(--muted); text-decoration: none; transition: color .15s; }
+    .breadcrumb a:hover { color: var(--accent); }
+    .breadcrumb .sep { color: var(--border); }
+    .breadcrumb .current { color: var(--text); font-weight: bold; }
+
+    /* ── Student card ───────────────────────────────────── */
+    .student-card {
+      border: 1px solid var(--border); border-radius: 6px;
+      margin-bottom: 1.5rem; overflow: hidden;
+    }
+
+    .sc-header {
+      position: relative;
+      display: flex; align-items: center; gap: 1rem;
+      padding: 1.2rem 1.4rem 1.1rem; flex-wrap: wrap;
+      background: linear-gradient(135deg,rgba(0,200,150,.07) 0%,transparent 70%);
+      border-bottom: 1px solid var(--border);
+    }
+    .sc-avatar {
+      width: 56px; height: 56px; border-radius: 12px; flex-shrink: 0;
+      background: rgba(0,200,150,.12); border: 1px solid rgba(0,200,150,.28);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; font-weight: bold; color: var(--accent);
+    }
+    .sc-name { font-size: 1.05rem; font-weight: bold; color: var(--text); }
+    .sc-sub  { font-size: .67rem; color: var(--muted); letter-spacing: .07em; margin-top: .25rem; }
+    .sc-actions { margin-left: auto; display: flex; gap: .5rem; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+    /* attendance bar strip */
+    .sc-att-bar {
+      display: flex; align-items: center; gap: .85rem;
+      padding: .75rem 1.4rem;
+      background: var(--stat-bg);
+      border-bottom: 1px solid var(--border);
+    }
+    .sc-att-pct { font-size: 1.5rem; font-weight: bold; min-width: 54px; }
+    .sc-att-lbl { font-size: .57rem; color: var(--muted); text-transform: uppercase; letter-spacing: .13em; margin-top: .1rem; }
+    .sc-att-wrap { flex: 1; }
+    .sc-att-note { font-size: .6rem; color: var(--muted); margin-top: .3rem; }
+
+    /* key-value grid */
+    .sc-fields {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    }
+    .sc-field {
+      padding: .65rem 1.1rem;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .sc-field:last-child { border-right: none; }
+    .sc-fkey { font-size: .55rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-bottom: .2rem; }
+    .sc-fval { font-size: .82rem; color: var(--text); word-break: break-all; }
+    .sc-fval.accent { color: var(--accent); font-weight: bold; }
+    .sc-fval.warn   { color: var(--warn); }
+
+    /* ── Attendance history ─────────────────────────────── */
+    .history-hdr {
+      display: flex; align-items: center; gap: 1rem;
+      margin-bottom: .75rem; flex-wrap: wrap;
+    }
+    .history-title {
+      font-size: .78rem; text-transform: uppercase; letter-spacing: .12em; color: var(--muted);
+    }
+    .history-search-wrap {
+      position: relative; flex: 1; min-width: 160px; max-width: 320px;
+    }
+    .history-search-wrap::before {
+      content: '🔍'; position: absolute; left: .7rem; top: 50%; transform: translateY(-50%);
+      font-size: .8rem; opacity: .4; pointer-events: none;
+    }
+    .history-search-wrap input { padding-left: 1.9rem; width: 100%; }
+
+    .date-group { margin-bottom: 1.15rem; }
+    .date-group-hdr {
+      display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem;
+      background: var(--stat-bg); border: 1px solid var(--border); border-radius: 4px 4px 0 0;
+      cursor: pointer; user-select: none;
+    }
+    .date-group-hdr .dg-date { font-size: .78rem; color: var(--accent); letter-spacing: .1em; font-weight: bold; }
+    .date-group-hdr .dg-cnt {
+      font-size: .68rem; color: var(--muted); margin-left: auto;
+      background: var(--badge-bg); border: 1px solid var(--border); border-radius: 3px; padding: .1rem .4rem;
+    }
+    .date-group-hdr .dg-arr { color: var(--muted); font-size: .7rem; transition: transform .2s; flex-shrink: 0; }
+    .date-group.collapsed .dg-arr          { transform: rotate(-90deg); }
+    .date-group-body { border: 1px solid var(--border); border-top: none; border-radius: 0 0 4px 4px; overflow: hidden; }
+    .date-group.collapsed .date-group-body { display: none; }
+    .date-group.collapsed .date-group-hdr  { border-radius: 4px; }
+
+    .empty-note {
+      color: var(--muted); font-size: .76rem; text-align: center;
+      padding: 1rem .75rem; border: 1px dashed var(--border); border-radius: 4px; background: var(--stat-bg);
+    }
+    .status-present {
+      display: inline-flex; align-items: center; gap: .25rem;
+      color: var(--accent); font-size: .72rem; font-weight: bold; letter-spacing: .08em; text-transform: uppercase;
+    }
+    .status-absent {
+      display: inline-flex; align-items: center; gap: .25rem;
+      color: var(--danger); font-size: .72rem; font-weight: bold; letter-spacing: .08em; text-transform: uppercase;
+    }
+    .today-tag {
+      font-size: .58rem; background: var(--accent); color: #0f1117;
+      padding: .08rem .3rem; border-radius: 3px; font-weight: bold; vertical-align: middle;
+    }
+
+    /* danger button variant */
+    .btn-danger {
+      background: none; border: 1px solid var(--danger);
+      color: var(--danger); transition: background .15s, color .15s;
+    }
+    .btn-danger:hover { background: var(--danger); color: #fff; }
+
+    @media (max-width: 540px) {
+      .sc-fields { grid-template-columns: 1fr 1fr; }
+      .sc-field  { border-right: none; }
+      .sc-actions { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar">
+  <a href="/select-class.html" class="nb-brand"></a>
+  <div class="nb-right">
+    <div class="nb-cls-sel">
+      <select id="nb-cls-select"></select>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
+    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+  </div>
+</nav>
+<div class="overlay" id="overlay"></div>
+<nav class="drawer" id="drawer"></nav>
+
+<!-- Confirm modal -->
+<div class="confirm-bg" id="confirm-modal">
+  <div class="confirm-box">
+    <p id="confirm-text"><strong id="confirm-label"></strong></p>
+    <div class="confirm-actions">
+      <button class="confirm-yes" id="confirm-yes-btn">Confirm</button>
+      <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="page-wrap">
+  <div class="card">
+
+    <div class="breadcrumb">
+      <a href="/students.html">&#8592; Students</a>
+      <span class="sep">/</span>
+      <span class="current" id="bc-name">Loading…</span>
+    </div>
+
+    <!-- Loading state -->
+    <div id="student-loading" class="empty"><span class="spinner"></span></div>
+
+    <!-- ── Student info card ──────────────────────────── -->
+    <div class="student-card" id="student-card" style="display:none">
+
+      <div class="sc-header">
+        <div class="sc-avatar" id="sc-avatar">?</div>
+        <div>
+          <div class="sc-name" id="sc-name">—</div>
+          <div class="sc-sub"  id="sc-sub">—</div>
+        </div>
+        <div class="sc-actions">
+          <button class="btn btn-sm" id="mark-btn" onclick="markPresent()">&#10003; Mark Present</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteStudent()">&#10005; Delete Student</button>
+        </div>
+      </div>
+
+      <div class="sc-att-bar" id="sc-att-bar" style="display:none">
+        <div>
+          <div class="sc-att-pct" id="sc-pct">—</div>
+          <div class="sc-att-lbl">Attendance</div>
+        </div>
+        <div class="sc-att-wrap">
+          <div class="pct-bar-wrap"><div class="pct-bar" id="sc-bar" style="width:0%"></div></div>
+          <div class="sc-att-note" id="sc-pct-note"></div>
+        </div>
+      </div>
+
+      <div class="sc-fields" id="sc-fields"></div>
+
+    </div>
+    <!-- ────────────────────────────────────────────────── -->
+
+    <!-- ── Attendance history ─────────────────────────── -->
+    <div id="history-section" style="display:none">
+      <div class="history-hdr">
+        <div class="history-title">Attendance History</div>
+        <div class="history-search-wrap">
+          <input type="text" id="hist-search" placeholder="Search date…" oninput="filterHistory()">
+        </div>
+      </div>
+      <div id="log-groups"><div class="empty-note">Loading…</div></div>
+    </div>
+    <!-- ────────────────────────────────────────────────── -->
+
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+  var g_class   = 0;
+  var g_uid     = null;
+  var g_student = null;
+  var g_schema  = [];
+
+  /* ── Helpers ─────────────────────────────────────────── */
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function localDateStr(d) {
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  }
+  function localTimeStr(d) {
+    return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+  }
+  function getTodayName() { return localDateStr(new Date()); }
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function normalizeLogRecord(item, date) {
+    if (!item) return { name:'', roll:'', uid:'', batch:'', time:'', status:'', id:'', date: date || '' };
+    return {
+      name:   item.name   || item.nm        || '',
+      roll:   item.roll   || item.rl        || '',
+      uid:    item.uid    || item.card_uid  || '',
+      batch:  item.batch  || item.batchtime || item.bt || '',
+      time:   item.time   || item.entry_time || '',
+      status: item.status || 'present',
+      id:     item.id     || '',
+      date:   item.date   || date || ''
+    };
+  }
+
+  /* ── Init ─────────────────────────────────────────────── */
+  document.addEventListener('DOMContentLoaded', function () {
+    buildNavbar('students');
+    var params = new URLSearchParams(location.search);
+    g_uid = params.get('uid') || null;
+    if (!g_uid) { location.href = '/students.html'; return; }
+
+    getSession().then(function (s) {
+      if (!s.class) { location.href = '/select-class.html'; return; }
+      g_class = s.class;
+
+      api('/api/schema')
+        .then(function (sc) {
+          g_schema = (sc.student || []).filter(function (c) {
+            return !c.system && !c['default'] &&
+                   ['name', 'roll', 'card_uid', 'batchtime'].indexOf(c.key) === -1 && c.ask;
+          });
+        })
+        .catch(function () {})
+        .then(function () { loadStudent(); });
+
+    }).catch(function () { location.href = '/login.html'; });
+  });
+
+  /* ── Load student ────────────────────────────────────── */
+  // FIX-13: Use the dedicated detail endpoint instead of fetching the entire
+  // class list and filtering client-side. Saves transferring all student data
+  // when only one record is needed.
+  function loadStudent() {
+    api('/api/students/detail?uid=' + encodeURIComponent(g_uid) + '&c=' + g_class)
+      .then(function (resp) {
+        // Backend returns { student:{uid,name,roll,batch}, total_days:N, records:[...] }
+        var s = resp.student;
+        if (!s) {
+          document.getElementById('student-loading').textContent = 'Student not found.';
+          return;
+        }
+        // Backend key is "batch", frontend expects "batchtime"
+        s.batchtime = s.batchtime || s.batch || '';
+        // Compute stats not returned directly by the detail endpoint
+        var records   = resp.records || [];
+        s.sessions  = records.length;
+        var total_days = resp.total_days || 0;
+        s.att_pct   = total_days > 0 ? Math.round(s.sessions * 100 / total_days) : null;
+        s.archived  = false; // not returned by detail endpoint, default active
+        g_student = s;
+        renderStudentCard(s);
+        loadHistory();
+      }).catch(function (e) {
+        document.getElementById('student-loading').textContent = 'Error loading student: ' + e.message;
+      });
+  }
+
+  /* ── Render student card ─────────────────────────────── */
+  function renderStudentCard(s) {
+    var initials = (s.name || '?').trim().split(/\s+/)
+                    .map(function (w) { return w[0] || ''; })
+                    .join('').slice(0, 2).toUpperCase();
+    document.getElementById('sc-avatar').textContent = initials || '?';
+    document.getElementById('sc-name').textContent   = s.name || '—';
+    document.getElementById('sc-sub').textContent    =
+      'Roll: ' + (s.roll || '—') + '  ·  Batch: ' + (s.batchtime || '—') + '  ·  UID: ' + (s.uid || '—');
+    document.getElementById('bc-name').textContent   = s.name || '—';
+    document.title = (s.name || 'Student') + ' — Attendance';
+
+    /* Attendance bar */
+    var pct    = s.att_pct != null ? Math.round(s.att_pct) : null;
+    var attBar = document.getElementById('sc-att-bar');
+    if (pct !== null) {
+      attBar.style.display = 'flex';
+      var pctEl = document.getElementById('sc-pct');
+      pctEl.textContent = pct + '%';
+      pctEl.className   = 'sc-att-pct ' + (pct >= 75 ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red');
+      var barEl = document.getElementById('sc-bar');
+      barEl.style.width = pct + '%';
+      barEl.className   = 'pct-bar ' + (pct >= 75 ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red');
+      document.getElementById('sc-pct-note').textContent =
+        pct >= 75 ? '✓ Above threshold' : '⚠ Below threshold';
+    } else {
+      attBar.style.display = 'none';
+    }
+
+    /* Fields grid */
+    var coreFields = [
+      { k: 'Card UID', v: s.uid       || '—' },
+      { k: 'Roll No',  v: s.roll      || '—' },
+      { k: 'Batch',    v: s.batchtime || '—' },
+      { k: 'Status',   v: s.archived ? 'Archived' : 'Active',
+        cls: s.archived ? 'warn' : 'accent' },
+      { k: 'Sessions', v: s.sessions != null ? String(s.sessions) : '—' },
+    ];
+    var fHtml = coreFields.map(function (f) {
+      return '<div class="sc-field">' +
+               '<div class="sc-fkey">' + esc(f.k) + '</div>' +
+               '<div class="sc-fval' + (f.cls ? ' ' + f.cls : '') + '">' + esc(f.v) + '</div>' +
+             '</div>';
+    }).join('');
+    g_schema.forEach(function (col) {
+      if (['name', 'roll', 'uid', 'card_uid', 'batchtime'].indexOf(col.key) !== -1) return;
+      var v = (s.extra && s.extra[col.key]) || s[col.key] || '—';
+      fHtml += '<div class="sc-field">' +
+                 '<div class="sc-fkey">' + esc(col.label) + '</div>' +
+                 '<div class="sc-fval">' + esc(String(v)) + '</div>' +
+               '</div>';
+    });
+    document.getElementById('sc-fields').innerHTML = fHtml;
+
+    document.getElementById('student-loading').style.display = 'none';
+    document.getElementById('student-card').style.display    = '';
+    document.getElementById('history-section').style.display = '';
+  }
+
+  /* ── Actions ─────────────────────────────────────────── */
+  function markPresent() {
+    var now  = new Date();
+    var date = localDateStr(now);
+    var time = localTimeStr(now);
+    var btn  = document.getElementById('mark-btn');
+    btn.disabled = true;
+    btn.textContent = '…';
+    api('/api/attendance/mark', 'POST', { uid: g_uid, date: date, time: time })
+      .then(function () {
+        showToast('Marked present — ' + date + ' ' + time);
+        btn.disabled = false;
+        btn.innerHTML = '&#10003; Mark Present';
+        loadHistory();
+      })
+      .catch(function (e) {
+        showToast(e.message, true);
+        btn.disabled = false;
+        btn.innerHTML = '&#10003; Mark Present';
+      });
+  }
+
+  function deleteStudent() {
+    if (!g_student) return;
+    confirmAction('Permanently delete ' + g_student.name + '? This cannot be undone.', function () {
+      api('/api/students/delete?uid=' + encodeURIComponent(g_uid) + '&c=' + g_class, 'DELETE')
+        .then(function () {
+          showToast('Student deleted');
+          setTimeout(function () { location.href = '/students.html'; }, 900);
+        })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+
+  /* ── Attendance history ──────────────────────────────── */
+  function loadHistory() {
+    var logBox    = document.getElementById('log-groups');
+    if (logBox) logBox.innerHTML = "<div class='empty-note'>Loading…</div>";
+
+    var firstGroup = true;
+
+    apiStreamAttendance(
+      '/api/attendance?c=' + g_class + '&uid=' + encodeURIComponent(g_uid),
+
+      /* onHeader — stats not used on this page */
+      function () {},
+
+      /* onTodayItem — not needed on this page */
+      function () {},
+
+      /* onLogItem */
+      function (group) {
+        if (firstGroup) {
+          if (logBox) logBox.innerHTML = '';
+          firstGroup = false;
+        }
+        appendLogGroup(group);
+      },
+
+      /* onDone */
+      function () {
+        if (firstGroup && logBox) {
+          logBox.innerHTML = "<div class='empty-note'>No attendance records found.</div>";
+        } else {
+          initGroups();        /* wire collapse/expand (from app.js) */
+          filterHistory();     /* apply any search already typed */
+        }
+      },
+
+      /* onError */
+      function (e) {
+        if (logBox) logBox.innerHTML =
+          "<div class='empty-note'>Error loading history: " + esc(e.message) + '</div>';
+      }
+    );
+  }
+
+  function appendLogGroup(group) {
+    var container = document.getElementById('log-groups');
+    if (!container) return;
+
+    var date    = group.date || getTodayName();
+    var records = (group.records || []).map(function (rec) {
+      return normalizeLogRecord(rec, date);
+    });
+    records.sort(function (a, b) {
+      return String(b.time || '').localeCompare(String(a.time || ''));
+    });
+
+    var today = getTodayName();
+    var pCnt  = records.filter(function (r) { return (r.status || 'present') === 'present'; }).length;
+    var aCnt  = records.filter(function (r) { return r.status === 'absent'; }).length;
+
+    var tableHead = '<tr><th>#</th><th>Time</th><th>Status</th><th>Actions</th></tr>';
+    var tbodyHtml = records.map(function (r, idx) {
+      var statusHtml = (r.status || 'present') === 'present'
+        ? "<span class='status-present'>&#9679; Present</span>"
+        : "<span class='status-absent'>&#9679; Absent</span>";
+      return '<tr>' +
+        "<td class='num-col'>" + (idx + 1) + '</td>' +
+        "<td><span style='color:var(--text);font-size:.83rem'>" + esc(r.time || '—') + '</span></td>' +
+        '<td>' + statusHtml + '</td>' +
+        "<td class='actions-col'>" +
+          "<button class='act-btn act-btn-del' onclick=\"delRecord(" +
+            JSON.stringify(r.id || '') + ',' +
+            JSON.stringify(r.name || '') + ',' +
+            JSON.stringify(date) +
+          ")\">&#10005; Remove</button>" +
+        '</td>' +
+        '</tr>';
+    }).join('');
+
+    var groupEl = document.createElement('div');
+    groupEl.className = 'date-group collapsed';
+    groupEl.dataset.date = date;
+    // FIX-14: Set data-gi='1' and attach the click handler here so initGroups()
+    // (called in onDone) skips this element and doesn't re-collapse it. Without
+    // this, any group the user opened during streaming was re-collapsed on done.
+    groupEl.dataset.gi = '1';
+    groupEl.innerHTML =
+      "<div class='date-group-hdr'>" +
+        "<span class='dg-date'>" + esc(date) +
+          (date === today ? " <span class='today-tag'>Today</span>" : '') +
+        '</span>' +
+        (pCnt ? "<span style='font-size:.66rem;color:var(--accent);margin-left:.4rem'>&#9679; " + pCnt + 'P</span>' : '') +
+        (aCnt ? "<span style='font-size:.66rem;color:var(--danger);margin-left:.3rem'>&#9679; " + aCnt + 'A</span>' : '') +
+        "<span class='dg-cnt'>" + records.length + ' record' + (records.length === 1 ? '' : 's') + '</span>' +
+        "<span class='dg-arr'>&#9660;</span>" +
+      '</div>' +
+      "<div class='date-group-body'>" +
+        '<table><thead>' + tableHead + '</thead><tbody>' + tbodyHtml + '</tbody></table>' +
+      '</div>';
+
+    var hdr = groupEl.querySelector('.date-group-hdr');
+    if (hdr) {
+      hdr.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        groupEl.classList.toggle('collapsed');
+      });
+    }
+
+    container.appendChild(groupEl);
+  }
+
+  function filterHistory() {
+    var q = (document.getElementById('hist-search').value || '').toLowerCase();
+    document.querySelectorAll('#log-groups .date-group').forEach(function (grp) {
+      var date = (grp.dataset.date || '').toLowerCase();
+      grp.style.display = (!q || date.includes(q)) ? '' : 'none';
+    });
+  }
+
+  function delRecord(id, name, date) {
+    confirmAction(name + ' on ' + date, function () {
+      api('/api/attendance/delete?id=' + encodeURIComponent(id) + '&c=' + g_class, 'DELETE')
+        .then(function () { showToast('Record deleted'); loadHistory(); })
+        .catch(function (e) { showToast(e.message, true); });
+    });
+  }
+</script>
+</body>
+</html>

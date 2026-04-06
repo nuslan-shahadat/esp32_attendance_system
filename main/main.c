@@ -104,13 +104,34 @@ void app_main(void)
     db_ensure_default_classes();
     db_ensure_default_schema();
 
-    /* 4. WiFi */
+    /* 4. WiFi
+     * FIX-35: Load network credentials from the config DB instead of using
+     * compile-time constants.  The hardcoded values are kept as fallback
+     * defaults so the device still boots on first flash without a DB record.
+     * Exposed fields can be edited through the WiFi config web page and
+     * persisted via db_config_set() so re-flashing is not needed. */
+    static char ap_pass[64]  = "12345678";
+    static char sta_ip[16]   = "";
+    static char sta_gw[16]   = "192.168.68.1";
+    static char sta_nm[16]   = "255.255.255.0";
+
+    #define LOAD_CFG(key, buf) do { \
+        char *_v = db_config_get(key); \
+        if (_v && _v[0]) { strncpy(buf, _v, sizeof(buf) - 1); buf[sizeof(buf)-1] = '\0'; } \
+        free(_v); \
+    } while (0)
+
+    LOAD_CFG("ap_pass",     ap_pass);
+    LOAD_CFG("sta_ip",      sta_ip);
+    LOAD_CFG("sta_gateway", sta_gw);
+    LOAD_CFG("sta_netmask", sta_nm);
+
     wifi_mgr_config_t wifi_cfg = {
         .ap_ssid     = "Attendance_AP",
-        .ap_pass     = "12345678",
-        .sta_ip      = "192.168.68.104",
-        .sta_gateway = "192.168.68.1",
-        .sta_netmask = "255.255.255.0",
+        .ap_pass     = ap_pass,
+        .sta_ip      = sta_ip[0] ? sta_ip : NULL,   /* NULL = use DHCP */
+        .sta_gateway = sta_gw,
+        .sta_netmask = sta_nm,
     };
     wifi_mgr_init(&wifi_cfg);
 
@@ -129,15 +150,17 @@ void app_main(void)
     }
 
     /* 5. SNTP — only meaningful when we have internet (STA mode).
-     *    In AP mode there is no upstream DNS or NTP server reachable, so
-     *    skip it here.  Time will sync automatically after the user
-     *    configures WiFi credentials through the web UI and the device
-     *    reconnects in STA mode.                                          */
+     * FIX-36: Persist the NTP sync result to the config DB so the UI can
+     * show a warning banner when the clock is unsynced (attendance timestamps
+     * would be stuck at year 2000 without a successful sync). */
     if (wifi_mgr_is_connected()) {
         db_sntp_sync();
+        /* db_sntp_sync() now writes "ntp_synced"="1" or "0" to the config DB */
     } else {
         ESP_LOGW(TAG, "AP mode — NTP skipped (no internet). "
                       "Configure WiFi via the web UI to enable time sync.");
+        /* FIX-36: Mark as unsynced so the UI banner fires immediately */
+        db_config_set("ntp_synced", "0");
     }
 
     /* 6. HTTP server */

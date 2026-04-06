@@ -164,6 +164,18 @@ typedef struct { int added; int skipped; } db_import_result_t;
 db_import_result_t db_import_csv(int class_num, const char *type,
                                  const char *csv_buf, size_t csv_len);
 
+/* ── Streaming CSV import (low-memory, no large buffer needed) ──
+ * Usage:
+ *   db_import_begin();
+ *   for each data row: db_import_process_line(cn, type, fields, nf, &result);
+ *   db_import_end();
+ * Must NOT be nested or called from multiple tasks simultaneously. */
+void db_import_begin(void);
+void db_import_process_line(int class_num, const char *type,
+                            char **fields, int nfields,
+                            db_import_result_t *result);
+void db_import_end(void);
+
 /* ── Backup ──────────────────────────────────────────────── */
 void  db_sd_backup(void);
 

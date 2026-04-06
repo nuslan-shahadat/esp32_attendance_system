@@ -75,13 +75,29 @@ void auth_create_session(char *out_buf, size_t buf_len)
 void auth_destroy_session(const char *token)
 {
     ensure_init();
-    (void)token;   /* single-session system — just wipe the stored token */
+    /* FIX-21: Validate the supplied token matches the stored one before
+     * destroying the session. Previously the token argument was ignored
+     * entirely, so any logout request (even with a forged token) would
+     * destroy the active session. Uses constant-time compare to prevent
+     * timing attacks. */
+    if (!token || token[0] == '\0') return;   /* reject empty token */
+
+    bool match = true;
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    memset(s_token, 0, sizeof(s_token));
-    s_expiry_us      = 0;
-    s_selected_class = 0;
+    for (int i = 0; i < AUTH_TOKEN_LEN; i++) {
+        if (token[i] != s_token[i]) match = false;
+    }
+    if (token[AUTH_TOKEN_LEN] != '\0') match = false;
+
+    if (match) {
+        memset(s_token, 0, sizeof(s_token));
+        s_expiry_us      = 0;
+        s_selected_class = 0;
+        ESP_LOGI(TAG, "Session destroyed");
+    } else {
+        ESP_LOGW(TAG, "auth_destroy_session: token mismatch — ignored");
+    }
     xSemaphoreGive(s_mutex);
-    ESP_LOGI(TAG, "Session destroyed");
 }
 
 bool auth_check(httpd_req_t *req)

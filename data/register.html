@@ -97,7 +97,7 @@
 
 <div class="confirm-bg" id="confirm-modal">
   <div class="confirm-box">
-    <p>Confirm: <strong id="confirm-label"></strong></p>
+    <p id="confirm-text">Confirm: <strong id="confirm-label"></strong></p>
     <div class="confirm-actions">
       <button class="confirm-yes" id="confirm-yes-btn">OK</button>
       <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
@@ -260,11 +260,21 @@
         .then(function (d) {
           if (!d || !d.seq || d.seq === lastSeq) return;
           lastSeq = d.seq;
+          // FIX-19: Previously a scan was silently dropped if f-uid already had a
+          // value, with no feedback. Now: empty/same UID → set immediately;
+          // different UID → prompt user before overwriting.
           var el = document.getElementById('f-uid');
-          if (el && !el.value && d.uid) {
-            el.value = d.uid;
+          if (el && d.uid) {
             var st = document.getElementById('scan-status');
-            if (st) st.textContent = '\u2713 ' + d.uid;
+            if (!el.value || el.value === d.uid) {
+              el.value = d.uid;
+              if (st) st.textContent = '\u2713 ' + d.uid;
+            } else {
+              if (confirm('Replace existing UID "' + el.value + '" with scanned UID "' + d.uid + '"?')) {
+                el.value = d.uid;
+                if (st) st.textContent = '\u2713 ' + d.uid + ' (replaced)';
+              }
+            }
           }
         }).catch(function () {});
     }, 1500);

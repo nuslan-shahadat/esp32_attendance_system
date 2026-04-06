@@ -16,25 +16,26 @@ esp_err_t api_session_get(httpd_req_t *req);
 /* Classes */
 esp_err_t api_classes_get(httpd_req_t *req);
 esp_err_t api_classes_add_post(httpd_req_t *req);
-esp_err_t api_classes_delete_get(httpd_req_t *req);
+/* FIX-22: Renamed _get → _post for all destructive/mutating handlers */
+esp_err_t api_classes_delete_post(httpd_req_t *req);
 esp_err_t api_set_class_get(httpd_req_t *req);
 esp_err_t api_batches_get(httpd_req_t *req);
 esp_err_t api_batches_add_post(httpd_req_t *req);
-esp_err_t api_batches_delete_get(httpd_req_t *req);
+esp_err_t api_batches_delete_post(httpd_req_t *req);
 
 /* Students */
 esp_err_t api_students_get(httpd_req_t *req);
 esp_err_t api_students_register_post(httpd_req_t *req);
 esp_err_t api_students_edit_post(httpd_req_t *req);
-esp_err_t api_students_archive_get(httpd_req_t *req);
-esp_err_t api_students_restore_get(httpd_req_t *req);
-esp_err_t api_students_delete_get(httpd_req_t *req);
+esp_err_t api_students_archive_post(httpd_req_t *req);
+esp_err_t api_students_restore_post(httpd_req_t *req);
+esp_err_t api_students_delete_handler(httpd_req_t *req);
 esp_err_t api_students_detail_get(httpd_req_t *req);
 
 /* Attendance */
 esp_err_t api_attendance_get(httpd_req_t *req);
 esp_err_t api_attendance_mark_post(httpd_req_t *req);
-esp_err_t api_attendance_delete_get(httpd_req_t *req);
+esp_err_t api_attendance_delete_handler(httpd_req_t *req);
 esp_err_t api_rfid_events_get(httpd_req_t *req);
 
 /* Report */
@@ -43,17 +44,17 @@ esp_err_t api_report_get(httpd_req_t *req);
 /* Schema */
 esp_err_t api_schema_get(httpd_req_t *req);
 esp_err_t api_schema_add_post(httpd_req_t *req);
-esp_err_t api_schema_delete_get(httpd_req_t *req);
+esp_err_t api_schema_delete_handler(httpd_req_t *req);
 esp_err_t api_schema_edit_post(httpd_req_t *req);
-esp_err_t api_schema_toggle_get(httpd_req_t *req);
+esp_err_t api_schema_toggle_post(httpd_req_t *req);
 
 /* Admin */
 esp_err_t api_admin_settings_get(httpd_req_t *req);
 esp_err_t api_admin_settings_post(httpd_req_t *req);
 esp_err_t api_admin_reset_class_post(httpd_req_t *req);
-esp_err_t api_admin_reset_all_get(httpd_req_t *req);
+esp_err_t api_admin_reset_all_post(httpd_req_t *req);
 esp_err_t api_admin_factory_reset_post(httpd_req_t *req);
-esp_err_t api_admin_backup_get(httpd_req_t *req);
+esp_err_t api_admin_backup_post(httpd_req_t *req);
 esp_err_t api_admin_export_csv_get(httpd_req_t *req);
 esp_err_t api_admin_import_csv_post(httpd_req_t *req);
 
@@ -84,46 +85,47 @@ static const httpd_uri_t routes[] = {
     ROUTE(HTTP_GET,  "/api/session", api_session_get),
 
     /* Classes */
-    ROUTE(HTTP_GET,  "/api/classes",         api_classes_get),
-    ROUTE(HTTP_POST, "/api/classes/add",     api_classes_add_post),
-    ROUTE(HTTP_GET,  "/api/classes/delete",  api_classes_delete_get),
-    ROUTE(HTTP_GET,  "/api/set-class",       api_set_class_get),
-    ROUTE(HTTP_GET,  "/api/batches",         api_batches_get),
-    ROUTE(HTTP_POST, "/api/batches/add",     api_batches_add_post),
-    ROUTE(HTTP_GET,  "/api/batches/delete",  api_batches_delete_get),
+    ROUTE(HTTP_GET,    "/api/classes",         api_classes_get),
+    ROUTE(HTTP_POST,   "/api/classes/add",     api_classes_add_post),
+    /* FIX-22: Was HTTP_GET — destructive mutations must not be GETs (CSRF/cache risk) */
+    ROUTE(HTTP_POST,   "/api/classes/delete",  api_classes_delete_post),
+    ROUTE(HTTP_GET,    "/api/set-class",       api_set_class_get),
+    ROUTE(HTTP_GET,    "/api/batches",         api_batches_get),
+    ROUTE(HTTP_POST,   "/api/batches/add",     api_batches_add_post),
+    ROUTE(HTTP_POST,   "/api/batches/delete",  api_batches_delete_post),
 
     /* Students */
-    ROUTE(HTTP_GET,  "/api/students",             api_students_get),
-    ROUTE(HTTP_POST, "/api/students/register",    api_students_register_post),
-    ROUTE(HTTP_POST, "/api/students/edit",        api_students_edit_post),
-    ROUTE(HTTP_GET,  "/api/students/archive",     api_students_archive_get),
-    ROUTE(HTTP_GET,  "/api/students/restore",     api_students_restore_get),
-    ROUTE(HTTP_GET,  "/api/students/delete",      api_students_delete_get),
-    ROUTE(HTTP_GET,  "/api/students/detail",      api_students_detail_get),
+    ROUTE(HTTP_GET,    "/api/students",             api_students_get),
+    ROUTE(HTTP_POST,   "/api/students/register",    api_students_register_post),
+    ROUTE(HTTP_POST,   "/api/students/edit",        api_students_edit_post),
+    ROUTE(HTTP_POST,   "/api/students/archive",     api_students_archive_post),
+    ROUTE(HTTP_POST,   "/api/students/restore",     api_students_restore_post),
+    ROUTE(HTTP_DELETE, "/api/students/delete",      api_students_delete_handler),
+    ROUTE(HTTP_GET,    "/api/students/detail",      api_students_detail_get),
 
     /* Attendance */
-    ROUTE(HTTP_GET,  "/api/attendance",        api_attendance_get),
-    ROUTE(HTTP_POST, "/api/attendance/mark",   api_attendance_mark_post),
-    ROUTE(HTTP_GET,  "/api/attendance/delete", api_attendance_delete_get),
-    ROUTE(HTTP_GET,  "/api/rfid-events",       api_rfid_events_get),
+    ROUTE(HTTP_GET,    "/api/attendance",        api_attendance_get),
+    ROUTE(HTTP_POST,   "/api/attendance/mark",   api_attendance_mark_post),
+    ROUTE(HTTP_DELETE, "/api/attendance/delete", api_attendance_delete_handler),
+    ROUTE(HTTP_GET,    "/api/rfid-events",       api_rfid_events_get),
 
     /* Report */
     ROUTE(HTTP_GET, "/api/report", api_report_get),
 
     /* Schema */
-    ROUTE(HTTP_GET,  "/api/schema",         api_schema_get),
-    ROUTE(HTTP_POST, "/api/schema/add",     api_schema_add_post),
-    ROUTE(HTTP_GET,  "/api/schema/delete",  api_schema_delete_get),
-    ROUTE(HTTP_POST, "/api/schema/edit",    api_schema_edit_post),
-    ROUTE(HTTP_GET,  "/api/schema/toggle",  api_schema_toggle_get),
+    ROUTE(HTTP_GET,    "/api/schema",         api_schema_get),
+    ROUTE(HTTP_POST,   "/api/schema/add",     api_schema_add_post),
+    ROUTE(HTTP_DELETE, "/api/schema/delete",  api_schema_delete_handler),
+    ROUTE(HTTP_POST,   "/api/schema/edit",    api_schema_edit_post),
+    ROUTE(HTTP_POST,   "/api/schema/toggle",  api_schema_toggle_post),
 
     /* Admin */
     ROUTE(HTTP_GET,  "/api/admin/settings",       api_admin_settings_get),
     ROUTE(HTTP_POST, "/api/admin/settings",       api_admin_settings_post),
     ROUTE(HTTP_POST, "/api/admin/reset-class",    api_admin_reset_class_post),
-    ROUTE(HTTP_GET,  "/api/admin/reset-all",      api_admin_reset_all_get),
+    ROUTE(HTTP_POST, "/api/admin/reset-all",      api_admin_reset_all_post),
     ROUTE(HTTP_POST, "/api/admin/factory-reset",  api_admin_factory_reset_post),
-    ROUTE(HTTP_GET,  "/api/admin/backup-now",     api_admin_backup_get),
+    ROUTE(HTTP_POST, "/api/admin/backup-now",     api_admin_backup_post),
     ROUTE(HTTP_GET,  "/api/admin/export-csv",     api_admin_export_csv_get),
     ROUTE(HTTP_POST, "/api/admin/import-csv",     api_admin_import_csv_post),
 
@@ -208,18 +210,38 @@ esp_err_t http_send_ok(httpd_req_t *req)
 
 esp_err_t http_send_err(httpd_req_t *req, int http_status, const char *msg)
 {
-    /* Build {"error":"<msg>"} — msg must not contain double-quotes */
+    /* FIX-23: Escape msg before embedding — a '"' or '\' in msg previously
+     * broke the JSON, causing a SyntaxError on the client. */
+    char escaped[220] = {0};
+    const char *src = msg ? msg : "unknown";
+    int j = 0;
+    for (int i = 0; src[i] && j < (int)sizeof(escaped) - 2; i++) {
+        if (src[i] == '"' || src[i] == '\\') escaped[j++] = '\\';
+        escaped[j++] = src[i];
+    }
     char buf[256];
-    snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", msg ? msg : "unknown");
+    snprintf(buf, sizeof(buf), "{\"error\":\"%s\"}", escaped);
     return http_send_json(req, http_status, buf);
 }
 
 int http_read_body(httpd_req_t *req, char *buf, size_t buf_len)
 {
     int total = req->content_len;
-    if (total <= 0)    return 0;
-    if ((size_t)total >= buf_len) {
+    if (total <= 0) return 0;
+    /* BUG FIX: was >= which incorrectly rejected bodies of exactly
+     * buf_len-1 bytes.  Also: drain the socket on rejection so the
+     * connection stays usable for subsequent requests. */
+    if ((size_t)total > buf_len - 1) {
         ESP_LOGW(TAG, "Body too large: %d bytes (max %zu)", total, buf_len - 1);
+        /* Drain so keepalive connection is not left with unread bytes */
+        char drain[256];
+        int rem = total;
+        while (rem > 0) {
+            int n = rem < (int)sizeof(drain) ? rem : (int)sizeof(drain);
+            int r = httpd_req_recv(req, drain, n);
+            if (r <= 0) { if (r == HTTPD_SOCK_ERR_TIMEOUT) continue; break; }
+            rem -= r;
+        }
         return -1;
     }
     int received = 0;

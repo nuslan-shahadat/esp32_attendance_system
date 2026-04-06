@@ -115,7 +115,7 @@
     buildNavbar('classes');
     getSession().catch(function () { location.href = '/login.html'; });
 
-    api('/api/classes').then(function (data) {
+    getClasses().then(function (data) {
       document.getElementById('loading').style.display = 'none';
       var grid = document.getElementById('class-grid');
       if (!data || !data.length) {
@@ -133,9 +133,11 @@
         card.className = 'class-card';
         card.innerHTML = renderCard(cn, total, null, null);
         card.addEventListener('click', function () {
-          api('/api/set-class?c=' + cn).then(function () {
-            location.href = '/attendance.html';
-          }).catch(function (e) { showToast(e.message, true); });
+          try { sessionStorage.setItem('att_active_class', String(cn)); } catch (e) {}
+          invalidateSession();
+          // Fire-and-forget; navigate immediately for zero-latency feel
+          api('/api/set-class?c=' + cn).catch(function (e) { showToast(e.message, true); });
+          location.href = '/attendance.html';
         });
         grid.appendChild(card);
         summaryQueue.push({ cn: cn, total: total, card: card });
