@@ -824,12 +824,20 @@
           tdName.style.cssText = 'padding:.4rem .5rem;font-family:monospace;font-size:.82rem;';
           var tdBtn = document.createElement('td');
           tdBtn.style.cssText = 'padding:.4rem .5rem;text-align:right;';
-          var btn = document.createElement('button');
-          btn.textContent = '↩ Restore';
-          btn.className = 'btn btn-sm';
-          btn.style.cssText = 'width:auto;font-size:.78rem;padding:.25rem .6rem;';
-          btn.onclick = function () { doRestoreBackup(fname, btn); };
-          tdBtn.appendChild(btn);
+          var btnRestore = document.createElement('button');
+          btnRestore.textContent = '↩ Restore';
+          btnRestore.className = 'btn btn-sm';
+          btnRestore.style.cssText = 'width:auto;font-size:.78rem;padding:.25rem .6rem;margin-right:.3rem;';
+          btnRestore.onclick = (function(f, b) { return function() { doRestoreBackup(f, b); }; })(fname, btnRestore);
+
+          var btnDel = document.createElement('button');
+          btnDel.textContent = '✕ Delete';
+          btnDel.className = 'btn btn-sm';
+          btnDel.style.cssText = 'width:auto;font-size:.78rem;padding:.25rem .6rem;color:var(--danger);border-color:var(--danger);';
+          btnDel.onclick = (function(f, row) { return function() { doDeleteBackup(f, row); }; })(fname, tr);
+
+          tdBtn.appendChild(btnRestore);
+          tdBtn.appendChild(btnDel);
           tr.appendChild(tdName);
           tr.appendChild(tdBtn);
           table.appendChild(tr);
@@ -858,6 +866,19 @@
           });
       }
     );
+  }
+
+  function doDeleteBackup(filename, rowEl) {
+    confirmAction('Delete backup "' + filename + '"? This cannot be undone.', function () {
+      api('/api/admin/delete-backup?file=' + encodeURIComponent(filename), 'GET')
+        .then(function () {
+          rowEl.style.transition = 'opacity .2s';
+          rowEl.style.opacity = '0';
+          setTimeout(function () { rowEl.remove(); }, 220);
+          showToast('Backup deleted.');
+        })
+        .catch(function (e) { showToast('Delete failed: ' + e.message, true); });
+    });
   }
 
   /* ── System Restart (was ESP32 Reboot) ── */

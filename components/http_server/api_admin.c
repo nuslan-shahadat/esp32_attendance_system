@@ -250,11 +250,23 @@ esp_err_t api_admin_sd_health_get(httpd_req_t *req)
     if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
     bool healthy = db_sd_health_check();
     char out[32];
-    snprintf(out, sizeof(out), "{\"health\":%s}", healthy ? "true" : "false");
+    snprintf(out, sizeof(out), "{\"healthy\":%s}", healthy ? "true" : "false");
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
     httpd_resp_sendstr(req, out);
     return ESP_OK;
+}
+
+/* GET /api/admin/delete-backup?file=attendance_2026-04-09.bak */
+esp_err_t api_admin_delete_backup_get(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+    char fname[64] = {0};
+    if (!http_query_param(req, "file", fname, sizeof(fname)))
+        return http_send_err(req, 400, "missing_file");
+    if (!db_sd_delete_backup(fname))
+        return http_send_err(req, 500, "delete_failed");
+    return http_send_ok(req);
 }
 
 /* GET /api/admin/export-csv?c=7&type=students */

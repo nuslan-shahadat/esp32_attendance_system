@@ -59,6 +59,7 @@ esp_err_t api_admin_backup_list_get(httpd_req_t *req);
 esp_err_t api_admin_restore_backup_post(httpd_req_t *req);
 esp_err_t api_admin_sd_remount_post(httpd_req_t *req);
 esp_err_t api_admin_sd_health_get(httpd_req_t *req);
+esp_err_t api_admin_delete_backup_get(httpd_req_t *req);
 esp_err_t api_admin_export_csv_get(httpd_req_t *req);
 esp_err_t api_admin_import_csv_post(httpd_req_t *req);
 
@@ -110,7 +111,7 @@ static const httpd_uri_t routes[] = {
     /* Attendance */
     ROUTE(HTTP_GET,    "/api/attendance",        api_attendance_get),
     ROUTE(HTTP_POST,   "/api/attendance/mark",   api_attendance_mark_post),
-    ROUTE(HTTP_DELETE, "/api/attendance/delete", api_attendance_delete_handler),
+    ROUTE(HTTP_GET,    "/api/attendance/delete", api_attendance_delete_handler),
     ROUTE(HTTP_GET,    "/api/rfid-events",       api_rfid_events_get),
 
     /* Report */
@@ -129,11 +130,12 @@ static const httpd_uri_t routes[] = {
     ROUTE(HTTP_POST, "/api/admin/reset-class",    api_admin_reset_class_post),
     ROUTE(HTTP_POST, "/api/admin/reset-all",      api_admin_reset_all_post),
     ROUTE(HTTP_POST, "/api/admin/factory-reset",  api_admin_factory_reset_post),
-    ROUTE(HTTP_POST, "/api/admin/backup-now",      api_admin_backup_post),
+    ROUTE(HTTP_GET,  "/api/admin/backup-now",      api_admin_backup_post),
     ROUTE(HTTP_GET,  "/api/admin/backup-list",     api_admin_backup_list_get),
     ROUTE(HTTP_POST, "/api/admin/restore-backup",  api_admin_restore_backup_post),
     ROUTE(HTTP_POST, "/api/admin/sd-remount",      api_admin_sd_remount_post),
     ROUTE(HTTP_GET,  "/api/admin/sd-health",       api_admin_sd_health_get),
+    ROUTE(HTTP_GET,  "/api/admin/delete-backup",     api_admin_delete_backup_get),
     ROUTE(HTTP_GET,  "/api/admin/export-csv",     api_admin_export_csv_get),
     ROUTE(HTTP_POST, "/api/admin/import-csv",     api_admin_import_csv_post),
 

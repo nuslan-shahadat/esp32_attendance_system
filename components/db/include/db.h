@@ -200,6 +200,7 @@ bool  db_sd_health_check(void);
 int   db_sd_remount(void);
 char *db_sd_list_backups(void);
 bool  db_sd_restore(const char *filename);
+bool  db_sd_delete_backup(const char *filename);
 
 /* ── System status ───────────────────────────────────────── */
 /* Returns JSON status blob. Caller frees. */

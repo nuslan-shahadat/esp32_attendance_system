@@ -180,8 +180,14 @@
           <div class="sc-sub"  id="sc-sub">—</div>
         </div>
         <div class="sc-actions">
-          <button class="btn btn-sm" id="mark-btn" onclick="markPresent()">&#10003; Mark Present</button>
+          <button class="btn btn-sm" id="mark-btn" onclick="markPresent()">&#10003; Mark Present Today</button>
           <button class="btn btn-sm btn-danger" onclick="deleteStudent()">&#10005; Delete Student</button>
+        </div>
+        <!-- Mark present on a specific date -->
+        <div class="sc-actions" style="margin-top:.5rem;gap:.5rem;flex-wrap:wrap;align-items:center;">
+          <label style="font-size:.82rem;color:var(--text-muted);white-space:nowrap">Mark present on date:</label>
+          <input type="date" id="mark-date-input" style="font-size:.82rem;padding:.25rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);max-width:160px">
+          <button class="btn btn-sm" id="mark-date-btn" onclick="markPresentOnDate()">&#10003; Mark</button>
         </div>
       </div>
 
@@ -382,6 +388,29 @@
         showToast(e.message, true);
         btn.disabled = false;
         btn.innerHTML = '&#10003; Mark Present';
+      });
+  }
+
+  function markPresentOnDate() {
+    var inp = document.getElementById('mark-date-input');
+    var btn = document.getElementById('mark-date-btn');
+    if (!inp || !inp.value) { showToast('Please pick a date first', true); return; }
+    // inp.value is YYYY-MM-DD (native date input format)
+    var dateParts = inp.value.split('-');  // [YYYY, MM, DD]
+    if (dateParts.length !== 3) { showToast('Invalid date', true); return; }
+    var isoDate = inp.value;  // already YYYY-MM-DD — what the server expects
+    var time = '00:00:00';
+    btn.disabled = true; btn.textContent = '…';
+    api('/api/attendance/mark', 'POST', { uid: g_uid, date: isoDate, time: time })
+      .then(function () {
+        showToast('Marked present — ' + isoDate);
+        inp.value = '';
+        btn.disabled = false; btn.textContent = '✓ Mark';
+        loadHistory();
+      })
+      .catch(function (e) {
+        showToast(e.message, true);
+        btn.disabled = false; btn.textContent = '✓ Mark';
       });
   }
 

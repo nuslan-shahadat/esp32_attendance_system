@@ -403,14 +403,35 @@ void db_sd_backup(void)
  * but VFS has gone silent" failure mode that resets don't fix. */
 bool db_sd_health_check(void)
 {
-    struct stat st;
-    if (stat(SD_MOUNT, &st) != 0) {
-        ESP_LOGW(TAG, "SD health: stat(%s) failed errno=%d", SD_MOUNT, errno);
+    /* stat() is NOT reliable here: the ESP-IDF FAT VFS keeps its directory
+     * entry cache alive even after the physical card disappears, so stat()
+     * on "/sdcard" or on a known file returns ESP_OK even when the card is
+     * completely gone.
+     *
+     * Reliable check: actually write one byte to a probe file and read it
+     * back.  Any real I/O failure surfaces immediately with a NULL return
+     * from fopen() or a short read.                                        */
+    static const char *PROBE = SD_MOUNT "/.hprobe";
+
+    FILE *f = fopen(PROBE, "wb");
+    if (!f) {
+        ESP_LOGW(TAG, "SD health: fopen write failed (errno=%d)", errno);
         return false;
     }
-    /* Also probe the DB file itself */
-    if (stat(DB_PATH, &st) != 0) {
-        ESP_LOGW(TAG, "SD health: DB file missing errno=%d", errno);
+    fputc(0xA5, f);
+    fclose(f);
+
+    f = fopen(PROBE, "rb");
+    if (!f) {
+        ESP_LOGW(TAG, "SD health: fopen read failed (errno=%d)", errno);
+        return false;
+    }
+    int ch = fgetc(f);
+    fclose(f);
+    remove(PROBE);
+
+    if (ch != 0xA5) {
+        ESP_LOGW(TAG, "SD health: probe byte mismatch (got %d)", ch);
         return false;
     }
     return true;
@@ -432,7 +453,7 @@ int db_sd_remount(void)
     }
     db_unlock();
 
-    /* 2. Unmount the FAT volume */
+    /* 2. Unmount the FAT volume (also removes the SDSPI device internally) */
     if (s_card) {
         esp_err_t ret = esp_vfs_fat_sdcard_unmount(SD_MOUNT, s_card);
         if (ret != ESP_OK)
@@ -440,7 +461,14 @@ int db_sd_remount(void)
         s_card = NULL;
     }
 
-    /* 3. Re-mount */
+    /* 3. Free the SPI bus so spi_bus_initialize() in sd_mount() can
+     *    reinitialise it cleanly.  Without this the second call returns
+     *    ESP_ERR_INVALID_STATE and the SDSPI device is never re-created,
+     *    making every subsequent mount attempt silently fail.             */
+    spi_bus_free(SPI2_HOST);
+    vTaskDelay(pdMS_TO_TICKS(200));   /* brief settle time */
+
+    /* 4. Re-mount */
     esp_err_t ret = sd_mount(&s_spi_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "SD remount: mount failed: %s", esp_err_to_name(ret));
@@ -602,6 +630,24 @@ bool db_sd_restore(const char *filename)
     }
     ESP_LOGW(TAG, "db_sd_restore: incomplete, rc=%d", rc);
     return false;
+}
+
+/* ── Delete a backup file ────────────────────────────────────── */
+bool db_sd_delete_backup(const char *filename)
+{
+    if (!filename || !*filename) return false;
+    if (strstr(filename, "/") || strstr(filename, "..")) {
+        ESP_LOGW(TAG, "db_sd_delete_backup: invalid filename");
+        return false;
+    }
+    char path[64];
+    snprintf(path, sizeof(path), SD_MOUNT "/sd/%s", filename);
+    if (remove(path) != 0) {
+        ESP_LOGW(TAG, "db_sd_delete_backup: remove failed errno=%d", errno);
+        return false;
+    }
+    ESP_LOGI(TAG, "Backup deleted: %s", path);
+    return true;
 }
 
 /* ── Status JSON ─────────────────────────────────────────────── */

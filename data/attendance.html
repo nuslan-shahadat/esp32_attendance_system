@@ -380,8 +380,9 @@ function loadData() {
     records.sort((a,b) => String(b.time||'').localeCompare(String(a.time||'')));
 
     const todayStr = getTodayName();
-    const pCnt = records.filter(r => (r.status||'present')==='present').length;
-    const aCnt = records.filter(r => r.status==='absent').length;
+    // Use server-provided counts: absent = total_students - present (not just logged-absent rows)
+    const pCnt = (group.present_count != null) ? group.present_count : records.filter(r => (r.status||'present')==='present').length;
+    const aCnt = (group.absent_count  != null) ? group.absent_count  : records.filter(r => r.status==='absent').length;
 
     const tbodyHtml = records.map((r, idx) => {
       const statusHtml = (r.status||'present')==='present' ? `<span class="status-present">● Present</span>` : `<span class="status-absent">● Absent</span>`;
