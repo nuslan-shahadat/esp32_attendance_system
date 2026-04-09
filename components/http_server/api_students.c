@@ -78,7 +78,7 @@ esp_err_t api_students_detail_get(httpd_req_t *req)
 esp_err_t api_students_register_post(httpd_req_t *req)
 {
     if (!auth_check_with_class(req)) return http_send_err(req, 403, "no_class");
-    char body[512] = {0};
+    char body[2048] = {0};
     if (http_read_body(req, body, sizeof(body)) < 0)
         return http_send_err(req, 400, "body_too_large");
 
@@ -124,7 +124,7 @@ esp_err_t api_students_register_post(httpd_req_t *req)
 esp_err_t api_students_edit_post(httpd_req_t *req)
 {
     if (!auth_check_with_class(req)) return http_send_err(req, 403, "no_class");
-    char body[512] = {0};
+    char body[2048] = {0};
     if (http_read_body(req, body, sizeof(body)) < 0)
         return http_send_err(req, 400, "body_too_large");
 

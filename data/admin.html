@@ -523,14 +523,14 @@
     if (!cn || cn < 1) { showToast('Enter a valid class number', true); return; }
     api('/api/classes/add', 'POST', { classnum: cn }).then(function () {
       document.getElementById('new-class').value = '';
-      showToast('Class added'); loadClasses();
+      showToast('Class added'); invalidateClasses(); loadClasses();
     }).catch(function (e) { showToast(e.message, true); });
   }
 
   function delClass(cn) {
     confirmAction('Delete Class ' + cn + '? All data will be lost.', function () {
       api('/api/classes/delete?c=' + cn, 'POST')
-        .then(function () { showToast('Deleted'); loadClasses(); })
+        .then(function () { showToast('Deleted'); invalidateClasses(); loadClasses(); })
         .catch(function (e) { showToast(e.message, true); });
     });
   }

@@ -356,7 +356,7 @@ function loadData() {
   function deleteRecord(id, rowEl) {
     if (!id) return;
     confirmAction(`Delete attendance record #${id}?`, () => {
-      api(`/api/attendance/delete?id=${encodeURIComponent(id)}`, 'DELETE')
+      api(`/api/attendance/delete?id=${encodeURIComponent(id)}`)
         .then(() => {
           rowEl.style.transition = 'opacity .25s';
           rowEl.style.opacity = '0';
