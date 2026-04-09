@@ -33,7 +33,7 @@
     .toolbar .search-wrap::before { content:'🔍'; position:absolute; left:.7rem; top:50%; transform:translateY(-50%); font-size:.8rem; opacity:.4; pointer-events:none; }
     .toolbar input[type="text"] { padding-left:1.9rem; width:100%; }
 
-    .today-table-wrap { overflow:hidden; border:1px solid var(--border); border-radius:4px; margin-bottom:.9rem; }
+    .today-table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid var(--border); border-radius:4px; margin-bottom:.9rem; }
     tbody tr.clickable { cursor:pointer; }
     tbody tr.clickable:hover { background:var(--row-hover); }
     .num-col { width:1%; white-space:nowrap; }
@@ -66,8 +66,8 @@
   <a href="/select-class.html" class="nb-brand"></a>
   <div class="nb-right">
     <div class="nb-cls-sel"><select id="nb-cls-select"></select></div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
-    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
+    <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
@@ -77,7 +77,7 @@
   <div class="confirm-box">
     <p id="confirm-text"><strong id="confirm-label"></strong></p>
     <div class="confirm-actions">
-      <button class="confirm-yes" id="confirm-yes-btn">Delete</button>
+      <button class="confirm-yes" id="confirm-yes-btn">Confirm</button>
       <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>
     </div>
   </div>
@@ -121,13 +121,13 @@
       </div>
       <div class="toolbar">
         <div class="search-wrap">
-          <input type="text" id="today-search" placeholder="Search name, roll, UID…" oninput="filterToday()">
+          <input type="text" id="today-search" placeholder="Search name, roll, UID…">
         </div>
       </div>
       <div class="today-table-wrap">
         <table>
           <thead><tr><th class="num-col">#</th><th>Name</th><th>Roll</th><th>UID</th><th>Batch</th><th>Status</th><th>Time</th><th></th></tr></thead>
-          <tbody id="today-tbody"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+          <tbody id="today-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -136,7 +136,7 @@
     <div id="log-section" style="display:none">
       <div class="toolbar">
         <div class="search-wrap">
-          <input type="text" id="log-search" placeholder="Search name or UID…" oninput="filterLog()">
+          <input type="text" id="log-search" placeholder="Search name or UID…">
         </div>
       </div>
       <div id="log-groups"><div class="empty-note">Loading…</div></div>
@@ -223,7 +223,7 @@
     const tbody = document.getElementById('today-tbody');
     tbody.innerHTML = '';
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="empty">No results</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="empty">No results</td></tr>`;
       return;
     }
     rows.forEach((r, i) => tbody.appendChild(buildTodayRow(r, i+1)));
@@ -234,7 +234,7 @@ function loadData() {
   const tbody = document.getElementById('today-tbody');
   const logBox = document.getElementById('log-groups');
 
-  tbody.innerHTML = '<tr><td colspan="7" class="empty">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="8" class="empty">Loading…</td></tr>';
   if (logBox) logBox.innerHTML = '<div class="empty-note">Loading Full Log…</div>';
 
   g_todayRows = [];
@@ -265,7 +265,7 @@ function loadData() {
     () => {
       if (gen !== g_loadGen) return;
       if (g_todayRows.length === 0 && tbody) {
-        tbody.innerHTML = `<tr><td colspan="7" class="empty">No students found.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="empty">No students found.</td></tr>`;
       }
       // Make sure all date groups are expandable
       initGroups();
@@ -274,7 +274,7 @@ function loadData() {
     err => {
       if (gen !== g_loadGen) return;
       const msg = esc(err.message || 'Unknown error');
-      if (tbody) tbody.innerHTML = `<tr><td colspan="7" class="empty">Error: ${msg}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="empty">Error: ${msg}</td></tr>`;
       if (logBox) logBox.innerHTML = `<div class="empty-note">Error: ${msg}</div>`;
     }
   );
@@ -329,7 +329,10 @@ function loadData() {
         .catch(() => { dot.className = 'scan-dot'; label.textContent = 'Reconnecting…'; });
     }
     poll();
-    setInterval(poll, 1500);
+    var rfidIntervalId = setInterval(poll, 1500);
+    window.addEventListener('pagehide', function() {
+      clearInterval(rfidIntervalId);
+    });
   }
 
   function markPresent(uid, btn) {
@@ -353,7 +356,7 @@ function loadData() {
   function deleteRecord(id, rowEl) {
     if (!id) return;
     confirmAction(`Delete attendance record #${id}?`, () => {
-      api(`/api/attendance/delete?id=${encodeURIComponent(id)}`)
+      api(`/api/attendance/delete?id=${encodeURIComponent(id)}`, 'DELETE')
         .then(() => {
           rowEl.style.transition = 'opacity .25s';
           rowEl.style.opacity = '0';
@@ -456,6 +459,9 @@ function loadData() {
     document.querySelectorAll('#today-filter-bar .ftab').forEach(btn => {
       btn.addEventListener('click', () => setActiveFilter(btn.dataset.filter));
     });
+
+    document.getElementById('today-search').addEventListener('input', debounce(filterToday, 180));
+    document.getElementById('log-search').addEventListener('input', debounce(filterLog, 180));
 
     getSession().then(s => {
       if (!s.class) { location.href = '/select-class.html'; return; }

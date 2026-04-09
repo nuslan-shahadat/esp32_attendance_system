@@ -41,12 +41,12 @@
     <div class="nb-cls-sel">
       <select id="nb-cls-select"></select>
     </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
     <div class="theme-switch">
       <span class="ts-icon" id="ts-icon">☀</span>
       <div class="ts-track" id="ts-track" onclick="toggleTheme()"><div class="ts-thumb"></div></div>
     </div>
-    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+    <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
@@ -185,7 +185,7 @@
     });
   }
 
-  function esc(v) { return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;'); }
+  function esc(v) { return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 </script>
 </body>
 </html>

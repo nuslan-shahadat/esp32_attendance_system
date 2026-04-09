@@ -30,6 +30,9 @@
   --row-hover:  rgba(0,200,150,.04);
   --stat-bg:    #0f1117;
   --badge-bg:   #0f1117;
+  /* aliases for forward-compatibility */
+  --text-muted: var(--muted);
+  --surface2:   var(--card2);
 }
 
 body.light {
@@ -53,6 +56,9 @@ body.light {
   --row-hover:  rgba(0,153,115,.05);
   --stat-bg:    #f5f7fa;
   --badge-bg:   #eef1f6;
+  /* aliases for forward-compatibility */
+  --text-muted: var(--muted);
+  --surface2:   var(--card2);
 }
 
 /* ── Base ────────────────────────────────────────────────────── */
@@ -1249,4 +1255,21 @@ tbody td    { padding: .65rem .9rem; vertical-align: middle; }
 @media (max-width: 400px) {
   body { padding: calc(52px + .5rem) .4rem 1rem; }
   .card { padding: .9rem .7rem; }
+}
+
+@media print {
+  .navbar, .drawer, .overlay, #toast, .btn, .back-btn { display: none !important; }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    padding: 0 !important;
+    font-size: 11pt;
+  }
+  .card {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  .card::before { display: none; }
+  a { color: inherit !important; text-decoration: none !important; }
 }

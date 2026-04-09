@@ -15,8 +15,8 @@
   <a href="/select-class.html" class="nb-brand"></a>
   <div class="nb-right">
     <div class="nb-cls-sel"><select id="nb-cls-select"></select></div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀️ Light</button>
-    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
+    <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
@@ -52,7 +52,7 @@
     <h2>Students</h2>
     <div class="toolbar">
       <div class="search-wrap">
-        <input type="text" id="search" placeholder="Search name or roll…" oninput="filterRows()">
+        <input type="text" id="search" placeholder="Search name or roll…">
       </div>
       <div class="filter-bar" style="margin:0;flex-shrink:0">
         <button class="ftab active-all" data-f="all" onclick="setFilter('all',this)">All</button>
@@ -82,6 +82,7 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     buildNavbar('students');
+    document.getElementById('search').addEventListener('input', debounce(filterRows, 180));
     getSession().then(s => {
       if (!s.class) { location.href = '/select-class.html'; return; }
       g_class = s.class;

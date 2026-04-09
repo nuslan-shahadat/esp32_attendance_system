@@ -140,8 +140,8 @@
     <div class="nb-cls-sel">
       <select id="nb-cls-select"></select>
     </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
-    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
+    <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
@@ -185,8 +185,8 @@
         </div>
         <!-- Mark present on a specific date -->
         <div class="sc-actions" style="margin-top:.5rem;gap:.5rem;flex-wrap:wrap;align-items:center;">
-          <label style="font-size:.82rem;color:var(--text-muted);white-space:nowrap">Mark present on date:</label>
-          <input type="date" id="mark-date-input" style="font-size:.82rem;padding:.25rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text);max-width:160px">
+          <label style="font-size:.82rem;color:var(--muted);white-space:nowrap">Mark present on date:</label>
+          <input type="date" id="mark-date-input" style="font-size:.82rem;padding:.25rem .5rem;border:1px solid var(--border);border-radius:6px;background:var(--input-bg);color:var(--text);max-width:160px">
           <button class="btn btn-sm" id="mark-date-btn" onclick="markPresentOnDate()">&#10003; Mark</button>
         </div>
       </div>
@@ -212,7 +212,7 @@
       <div class="history-hdr">
         <div class="history-title">Attendance History</div>
         <div class="history-search-wrap">
-          <input type="text" id="hist-search" placeholder="Search date…" oninput="filterHistory()">
+          <input type="text" id="hist-search" placeholder="Search date…">
         </div>
       </div>
       <div id="log-groups"><div class="empty-note">Loading…</div></div>
@@ -228,6 +228,7 @@
   var g_uid     = null;
   var g_student = null;
   var g_schema  = [];
+  var g_records = [];   /* flat attendance records from /api/students/detail */
 
   /* ── Helpers ─────────────────────────────────────────── */
   function pad2(n) { return String(n).padStart(2, '0'); }
@@ -264,6 +265,8 @@
     g_uid = params.get('uid') || null;
     if (!g_uid) { location.href = '/students.html'; return; }
 
+    document.getElementById('hist-search').addEventListener('input', debounce(filterHistory, 180));
+
     getSession().then(function (s) {
       if (!s.class) { location.href = '/select-class.html'; return; }
       g_class = s.class;
@@ -298,6 +301,7 @@
         s.batchtime = s.batchtime || s.batch || '';
         // Compute stats not returned directly by the detail endpoint
         var records   = resp.records || [];
+        g_records   = records;          /* cache for history rendering & delete */
         s.sessions  = records.length;
         var total_days = resp.total_days || 0;
         s.att_pct   = total_days > 0 ? Math.round(s.sessions * 100 / total_days) : null;
@@ -381,8 +385,8 @@
       .then(function () {
         showToast('Marked present — ' + date + ' ' + time);
         btn.disabled = false;
-        btn.innerHTML = '&#10003; Mark Present';
-        loadHistory();
+        btn.innerHTML = '&#10003; Mark Present Today';
+        reloadFromServer();
       })
       .catch(function (e) {
         showToast(e.message, true);
@@ -406,7 +410,7 @@
         showToast('Marked present — ' + isoDate);
         inp.value = '';
         btn.disabled = false; btn.textContent = '✓ Mark';
-        loadHistory();
+        reloadFromServer();
       })
       .catch(function (e) {
         showToast(e.message, true);
@@ -427,46 +431,52 @@
   }
 
   /* ── Attendance history ──────────────────────────────── */
+  /* Renders g_records (already fetched by loadStudent) grouped by date.
+   * No extra network request needed — /api/students/detail returns all
+   * records for this student with their id, date, time, batch, status. */
   function loadHistory() {
-    var logBox    = document.getElementById('log-groups');
-    if (logBox) logBox.innerHTML = "<div class='empty-note'>Loading…</div>";
+    var logBox = document.getElementById('log-groups');
+    if (!logBox) return;
 
-    var firstGroup = true;
+    logBox.innerHTML = '';
 
-    apiStreamAttendance(
-      '/api/attendance?c=' + g_class + '&uid=' + encodeURIComponent(g_uid),
+    if (!g_records || g_records.length === 0) {
+      logBox.innerHTML = "<div class='empty-note'>No attendance records found.</div>";
+      return;
+    }
 
-      /* onHeader — stats not used on this page */
-      function () {},
+    /* Group by date — records already come ORDER BY date DESC from the server */
+    var byDate    = {};
+    var dateOrder = [];
+    g_records.forEach(function (rec) {
+      var d = rec.date || '';
+      if (!byDate[d]) { byDate[d] = []; dateOrder.push(d); }
+      byDate[d].push(rec);
+    });
 
-      /* onTodayItem — not needed on this page */
-      function () {},
+    dateOrder.forEach(function (date) {
+      appendLogGroup({ date: date, records: byDate[date] });
+    });
 
-      /* onLogItem */
-      function (group) {
-        if (firstGroup) {
-          if (logBox) logBox.innerHTML = '';
-          firstGroup = false;
+    initGroups();
+    filterHistory();
+  }
+
+  /* Re-fetch from server (used after mark-present so the new record's id is known) */
+  function reloadFromServer() {
+    api('/api/students/detail?uid=' + encodeURIComponent(g_uid) + '&c=' + g_class)
+      .then(function (resp) {
+        g_records = resp.records || [];
+        if (g_student) {
+          g_student.sessions = g_records.length;
+          var total_days = resp.total_days || 0;
+          g_student.att_pct = total_days > 0
+            ? Math.round(g_records.length * 100 / total_days) : null;
+          renderStudentCard(g_student);
         }
-        appendLogGroup(group);
-      },
-
-      /* onDone */
-      function () {
-        if (firstGroup && logBox) {
-          logBox.innerHTML = "<div class='empty-note'>No attendance records found.</div>";
-        } else {
-          initGroups();        /* wire collapse/expand (from app.js) */
-          filterHistory();     /* apply any search already typed */
-        }
-      },
-
-      /* onError */
-      function (e) {
-        if (logBox) logBox.innerHTML =
-          "<div class='empty-note'>Error loading history: " + esc(e.message) + '</div>';
-      }
-    );
+        loadHistory();
+      })
+      .catch(function (e) { showToast('Refresh failed: ' + e.message, true); });
   }
 
   function appendLogGroup(group) {
@@ -546,9 +556,16 @@
   }
 
   function delRecord(id, name, date) {
-    confirmAction(name + ' on ' + date, function () {
-      api('/api/attendance/delete?id=' + encodeURIComponent(id) + '&c=' + g_class, 'DELETE')
-        .then(function () { showToast('Record deleted'); loadHistory(); })
+    if (!id) { showToast('Invalid record', true); return; }
+    confirmAction('Remove attendance record for ' + name + ' on ' + date + '?', function () {
+      api('/api/attendance/delete?id=' + encodeURIComponent(id) + '&c=' + g_class)
+        .then(function () {
+          showToast('Record removed');
+          /* Remove locally so re-render is instant with no extra request */
+          g_records = g_records.filter(function (r) { return String(r.id) !== String(id); });
+          if (g_student) g_student.sessions = g_records.length;
+          loadHistory();
+        })
         .catch(function (e) { showToast(e.message, true); });
     });
   }

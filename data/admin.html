@@ -129,8 +129,8 @@
     <div class="nb-cls-sel">
       <select id="nb-cls-select"></select>
     </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
-    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
+    <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
@@ -280,8 +280,8 @@
 
           <!-- SD health row -->
           <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;flex-wrap:wrap;">
-            <span style="font-size:.85rem;color:var(--text-muted)">SD Status:</span>
-            <span id="sd-health-badge" style="font-size:.82rem;padding:.2rem .6rem;border-radius:99px;background:var(--surface2);color:var(--text-muted)">checking…</span>
+            <span style="font-size:.85rem;color:var(--muted)">SD Status:</span>
+            <span id="sd-health-badge" style="font-size:.82rem;padding:.2rem .6rem;border-radius:99px;background:var(--card2);color:var(--muted)">checking…</span>
             <button class="btn btn-sm" style="width:auto" onclick="doSdRemount()" id="sd-remount-btn" title="Attempt soft re-mount without reboot or format">🔄 Re-mount SD</button>
           </div>
 
@@ -293,7 +293,7 @@
 
           <!-- Backup file list (hidden by default) -->
           <div id="backup-list-wrap" style="display:none">
-            <div id="backup-list-inner" style="font-size:.85rem;color:var(--text-muted);padding:.4rem 0">Loading…</div>
+            <div id="backup-list-inner" style="font-size:.85rem;color:var(--muted);padding:.4rem 0">Loading…</div>
           </div>
         </div>
       </div>
@@ -773,7 +773,7 @@
       .catch(function () {
         badge.textContent = '? Unknown';
         badge.style.background = '';
-        badge.style.color = 'var(--text-muted)';
+        badge.style.color = 'var(--muted)';
       });
   }
 

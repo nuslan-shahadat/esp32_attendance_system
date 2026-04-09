@@ -89,12 +89,12 @@
     <div class="nb-cls-sel">
       <select id="nb-cls-select"></select>
     </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">☀ Light</button>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
     <div class="theme-switch">
       <span class="ts-icon" id="ts-icon">☀</span>
       <div class="ts-track" id="ts-track" onclick="toggleTheme()"><div class="ts-thumb"></div></div>
     </div>
-    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+    <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
@@ -113,9 +113,11 @@
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     buildNavbar('classes');
-    getSession().catch(function () { location.href = '/login.html'; });
-
-    getClasses().then(function (data) {
+    getSession()
+      .then(function () {
+        return getClasses();
+      })
+      .then(function (data) {
       document.getElementById('loading').style.display = 'none';
       var grid = document.getElementById('class-grid');
       if (!data || !data.length) {
@@ -160,7 +162,11 @@
       fetchNextSummary(0);
     }).catch(function (e) {
       document.getElementById('loading').style.display = 'none';
-      showToast(e.message, true);
+      if (e.message === 'unauthorized' || e.message === 'no_class') {
+        location.href = '/login.html';
+      } else {
+        showToast(e.message, true);
+      }
     });
   });
 

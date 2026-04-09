@@ -88,8 +88,8 @@
     <div class="nb-cls-sel">
       <select id="nb-cls-select"></select>
     </div>
-    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()">&#9728; Light</button>
-    <button class="mb" id="mb"><span></span><span></span><span></span></button>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
+    <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="overlay" id="overlay"></div>
@@ -97,7 +97,7 @@
 
 <div class="confirm-bg" id="confirm-modal">
   <div class="confirm-box">
-    <p id="confirm-text">Confirm: <strong id="confirm-label"></strong></p>
+    <p id="confirm-text"><strong id="confirm-label"></strong></p>
     <div class="confirm-actions">
       <button class="confirm-yes" id="confirm-yes-btn">OK</button>
       <button class="confirm-no" onclick="closeModal('confirm-modal')">Cancel</button>

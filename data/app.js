@@ -42,7 +42,7 @@
 
   function applyAppearance(cfg) {
     var root = document.documentElement;
-    var font = FONTS[cfg.font] || FONTS['jetbrains'];
+    var font = FONTS[cfg.font] || FONTS['default'];
     root.style.setProperty('--font', font.stack);
     if (cfg.fontSize) root.style.setProperty('--font-size-base', cfg.fontSize + 'px');
   }
@@ -66,6 +66,15 @@
   var _origToggle = window.toggleTheme;
   window.toggleTheme = function () { _origToggle(); loadAppearance(); };
 })();
+
+// ── Debounce utility ────────────────────────────────────────────────
+window.debounce = function(fn, delay) {
+  var timer;
+  return function() {
+    clearTimeout(timer);
+    timer = setTimeout(fn, delay);
+  };
+};
 
 // ── Session cache — sessionStorage-backed, one network hit per browser session ──
 (function () {
@@ -128,6 +137,7 @@
     if (!btn || !drawer || !overlay) return;
 
     function toggle(open) {
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       btn.classList.toggle('open', open);
       drawer.classList.toggle('open', open);
       overlay.classList.toggle('open', open);
@@ -324,7 +334,6 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogGroup, o
       }
 
       function processBuffer() {
-        console.log(`[Stream] phase=${phase} | buf.length=${buf.length}`);
 
         /* Phase: header */
         if (phase === 'header') {
@@ -399,7 +408,6 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogGroup, o
 
           buf = afterLog.slice(openBracket + 1);
           phase = 'log';
-          console.log('%c[Stream] → Switched to LOG phase', 'color:#a00;font-weight:bold');
           resetExtractor();
           processBuffer();
           return;
@@ -422,7 +430,6 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogGroup, o
               if (depth === 0 && objStart >= 0) {
                 try {
                   const group = JSON.parse(buf.slice(objStart, pos + 1));
-                  console.log('%c[Stream] Received LOG GROUP', 'color:#a00;font-weight:bold', group);
                   onLogGroup(group);
                 } catch (e) {}
                 buf = buf.slice(pos + 1);
