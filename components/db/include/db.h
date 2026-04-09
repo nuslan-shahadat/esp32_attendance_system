@@ -179,6 +179,28 @@ void db_import_end(void);
 /* ── Backup ──────────────────────────────────────────────── */
 void  db_sd_backup(void);
 
+/* ── SD card health & recovery ──────────────────────────────────
+ * db_sd_health_check() probes the mount-point with a simple stat().
+ *   Returns true  if the SD card is readable.
+ *   Returns false if the mount-point has gone silent (data disappeared).
+ *
+ * db_sd_remount() closes the live DB, unmounts the SD card, re-mounts
+ *   it and reopens the database — all without a reboot or a format.
+ *   Returns ESP_OK on success.
+ *
+ * db_sd_list_backups() returns a malloc'd JSON array of backup filenames
+ *   found in /sdcard/sd/ (newest first).  Caller must free().
+ *   Example: ["attendance_2026-04-09.bak","attendance_2026-04-08.bak"]
+ *
+ * db_sd_restore() replaces the live database with the named backup file
+ *   (filename only, e.g. "attendance_2026-04-09.bak").
+ *   Returns true on success.
+ */
+bool  db_sd_health_check(void);
+int   db_sd_remount(void);
+char *db_sd_list_backups(void);
+bool  db_sd_restore(const char *filename);
+
 /* ── System status ───────────────────────────────────────── */
 /* Returns JSON status blob. Caller frees. */
 char *db_status_json(int class_num);

@@ -8,6 +8,13 @@
 #include <stdarg.h>
 
 static const char *TAG = "db_students";
+/* FIX: Release DB lock during network I/O to prevent ECONNRESET on other endpoints.
+ * See db_attendance.c STREAM_CB comment for full rationale. */
+#define STREAM_CB(buf, len) do {           \
+    db_unlock();                           \
+    ret = cb((buf), (size_t)(len), ctx);  \
+    db_lock();                            \
+} while (0)
 
 extern void     db_lock(void);
 extern void     db_unlock(void);
@@ -425,7 +432,7 @@ esp_err_t db_students_stream_json(int class_num, int include_archived, int min_a
     }
 
     /* ── Open the JSON array ── */
-    ret = cb("[", 1, ctx);
+    STREAM_CB("[", 1);
     if (ret != ESP_OK) { db_unlock(); return ret; }
 
     /* ── Query — no GROUP BY, no LEFT JOIN, no temp B-tree ──────────
@@ -498,7 +505,7 @@ esp_err_t db_students_stream_json(int class_num, int include_archived, int min_a
                 low_att ? "true" : "false");
 
             if (n > 0 && n < (int)sizeof(chunk)) {
-                ret = cb(chunk, (size_t)n, ctx);
+                STREAM_CB(chunk, n);
                 if (ret != ESP_OK) break;
                 first = false;   /* only advance past comma after successful send */
             }
@@ -509,7 +516,7 @@ esp_err_t db_students_stream_json(int class_num, int include_archived, int min_a
 
     /* ── Close the JSON array ── */
     if (ret == ESP_OK) {
-        ret = cb("]", 1, ctx);
+        STREAM_CB("]", 1);
     }
 
     db_unlock();

@@ -9,6 +9,22 @@
 
 static const char *TAG = "db_att";
 
+/*
+ * FIX: The DB mutex must NOT be held during cb() calls (httpd_resp_send_chunk).
+ * Holding the lock while doing network I/O blocks every other DB operation
+ * (classes API, RFID saves, status checks) for the entire response duration —
+ * up to 30 s on slow WiFi — causing ECONNRESET (error 104) on other requests.
+ *
+ * STREAM_CB: release the lock, send the chunk, reacquire the lock.
+ * SQLite WAL mode + SQLITE_THREADSAFE=1 make it safe to briefly release the
+ * external mutex between sqlite3_step() calls on the same prepared statement.
+ */
+#define STREAM_CB(buf, len) do {            \
+    db_unlock();                            \
+    ret = cb((buf), (size_t)(len), ctx);   \
+    db_lock();                             \
+} while (0)
+
 extern void     db_lock(void);
 extern void     db_unlock(void);
 extern sqlite3 *db_handle(void);
@@ -121,7 +137,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
         "\"today\":[",
         today, total, present_td, absent_td, total_rec);
 
-    ret = cb(hdr, (size_t)n, ctx);
+    STREAM_CB(hdr, n);
     if (ret != ESP_OK) { db_unlock(); return ret; }
 
     /* ── Today tab: one student per chunk (true streaming) ── */
@@ -170,7 +186,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
                     present ? "true" : "false", esc_time);
 
                 if (len > 0 && len < (int)sizeof(chunk)) {
-                    ret = cb(chunk, (size_t)len, ctx);
+                    STREAM_CB(chunk, len);
                     if (ret != ESP_OK) break;
                     first = false;
                 }
@@ -180,7 +196,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
     }
 
     /* Close today array and open log array */
-    if (ret == ESP_OK) ret = cb("],\"log\":[", 9, ctx);
+    if (ret == ESP_OK) { STREAM_CB("],\"log\":[", 9); }
 
     /* ── Log tab (grouped by date) — also streamed per date group ── */
     if (ret == ESP_OK) {
@@ -222,7 +238,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
                     "%s{\"date\":\"%s\",\"present_count\":%d,\"absent_count\":%d,\"records\":[",
                     first_date ? "" : ",", esc_date, p_cnt, a_cnt);
 
-                ret = cb(date_hdr, (size_t)dh_len, ctx);
+                STREAM_CB(date_hdr, dh_len);
                 if (ret != ESP_OK) break;
                 first_date = false;
 
@@ -266,7 +282,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
                             esc_time, esc_st);
 
                         if (len > 0 && len < (int)sizeof(rec_chunk)) {
-                            ret = cb(rec_chunk, (size_t)len, ctx);
+                            STREAM_CB(rec_chunk, len);
                             if (ret != ESP_OK) break;
                             first_rec = false;
                         }
@@ -274,7 +290,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
                     sqlite3_finalize(rs);
                 }
 
-                ret = cb("]}", 2, ctx);   /* close this date group */
+                STREAM_CB("]}", 2);   /* close this date group */
                 if (ret != ESP_OK) break;
             }
             sqlite3_finalize(ds);
@@ -282,7 +298,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
     }
 
     /* Close the entire log array and the JSON object */
-    if (ret == ESP_OK) ret = cb("]}", 2, ctx);
+    if (ret == ESP_OK) { STREAM_CB("]}", 2); }
 
     db_unlock();
     return ret;
@@ -321,7 +337,7 @@ esp_err_t db_report_stream_json(int class_num, const char *month_prefix,
     int hn = snprintf(hdr, sizeof(hdr),
                       "{\"class_days\":%d,\"min_pct\":%d,\"rows\":[",
                       class_days, min_att_pct);
-    ret = cb(hdr, (size_t)hn, ctx);
+    STREAM_CB(hdr, hn);
     if (ret != ESP_OK) { db_unlock(); return ret; }
 
     /* Stream each student row one by one */
@@ -370,7 +386,7 @@ esp_err_t db_report_stream_json(int class_num, const char *month_prefix,
                     pres, pct, (pct < min_att_pct) ? "true" : "false");
 
                 if (n > 0 && n < (int)sizeof(chunk)) {
-                    ret = cb(chunk, (size_t)n, ctx);
+                    STREAM_CB(chunk, n);
                     if (ret != ESP_OK) break;
                     first = false;
                 }
@@ -380,9 +396,7 @@ esp_err_t db_report_stream_json(int class_num, const char *month_prefix,
     }
 
     /* Close the JSON */
-    if (ret == ESP_OK) {
-        ret = cb("]}", 2, ctx);
-    }
+    if (ret == ESP_OK) { STREAM_CB("]}", 2); }
 
     db_unlock();
     return ret;

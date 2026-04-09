@@ -23,6 +23,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <errno.h>
+#include <dirent.h>
 
 static const char *TAG = "db";
 
@@ -31,6 +32,10 @@ static sqlite3          *s_db    = NULL;
 static SemaphoreHandle_t s_mutex = NULL;
 #define DB_PATH  "/sdcard/attendance.db"
 #define SD_MOUNT "/sdcard"
+
+/* Stored at db_init() time so db_sd_remount() can re-use them */
+static db_spi_config_t   s_spi_cfg = {0};
+static sdmmc_card_t     *s_card    = NULL;  /* kept for esp_vfs_fat_sdcard_unmount */
 
 /* ── Mutex helpers (used by all db_*.c files via extern) ──────── */
 void db_lock(void)   { xSemaphoreTakeRecursive(s_mutex, portMAX_DELAY); }
@@ -69,8 +74,6 @@ static esp_err_t sd_mount(const db_spi_config_t *spi)
         .allocation_unit_size   = 16 * 1024,
     };
 
-    sdmmc_card_t *card;
-
     spi_bus_config_t bus_cfg = {
         .mosi_io_num     = spi->mosi,
         .miso_io_num     = spi->miso,
@@ -95,10 +98,10 @@ static esp_err_t sd_mount(const db_spi_config_t *spi)
     /* Retry loop */
     for (int attempt = 0; attempt < 10; attempt++) {
         ret = esp_vfs_fat_sdspi_mount(SD_MOUNT, &host, &slot_cfg,
-                                       &mount_cfg, &card);
+                                       &mount_cfg, &s_card);
         if (ret == ESP_OK) {
             ESP_LOGI(TAG, "SD mounted — %.0f MB",
-                     (double)((uint64_t)card->csd.capacity * card->csd.sector_size)
+                     (double)((uint64_t)s_card->csd.capacity * s_card->csd.sector_size)
                      / (1024.0 * 1024.0));
             return ESP_OK;
         }
@@ -196,6 +199,7 @@ int db_init(const db_spi_config_t *spi)
     s_mutex = xSemaphoreCreateRecursiveMutex();
     if (!s_mutex) return ESP_ERR_NO_MEM;
 
+    s_spi_cfg = *spi;   /* store for db_sd_remount() */
     esp_err_t ret = sd_mount(spi);
     if (ret != ESP_OK) return ret;
 
@@ -391,6 +395,213 @@ void db_sd_backup(void)
         ESP_LOGI(TAG, "Backup written: %s", bak_path);
     else
         ESP_LOGW(TAG, "Backup incomplete, rc=%d", rc);
+}
+
+/* ── SD card health check ────────────────────────────────────── */
+/* Returns true when the SD mount-point is accessible.
+ * A simple stat() on SD_MOUNT catches the "card is physically present
+ * but VFS has gone silent" failure mode that resets don't fix. */
+bool db_sd_health_check(void)
+{
+    struct stat st;
+    if (stat(SD_MOUNT, &st) != 0) {
+        ESP_LOGW(TAG, "SD health: stat(%s) failed errno=%d", SD_MOUNT, errno);
+        return false;
+    }
+    /* Also probe the DB file itself */
+    if (stat(DB_PATH, &st) != 0) {
+        ESP_LOGW(TAG, "SD health: DB file missing errno=%d", errno);
+        return false;
+    }
+    return true;
+}
+
+/* ── SD card soft re-mount ───────────────────────────────────── */
+/* Closes the live DB, unmounts the card, re-mounts it, and reopens
+ * the database — all without a reboot or a format.
+ * Should be called when db_sd_health_check() returns false.        */
+int db_sd_remount(void)
+{
+    ESP_LOGI(TAG, "SD remount: starting...");
+
+    /* 1. Close the live database (must hold lock) */
+    db_lock();
+    if (s_db) {
+        sqlite3_close(s_db);
+        s_db = NULL;
+    }
+    db_unlock();
+
+    /* 2. Unmount the FAT volume */
+    if (s_card) {
+        esp_err_t ret = esp_vfs_fat_sdcard_unmount(SD_MOUNT, s_card);
+        if (ret != ESP_OK)
+            ESP_LOGW(TAG, "SD remount: unmount returned %s", esp_err_to_name(ret));
+        s_card = NULL;
+    }
+
+    /* 3. Re-mount */
+    esp_err_t ret = sd_mount(&s_spi_cfg);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "SD remount: mount failed: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    /* 4. Recreate backup dir if needed */
+    if (mkdir(SD_MOUNT "/sd", 0775) != 0 && errno != EEXIST)
+        ESP_LOGW(TAG, "SD remount: mkdir /sd errno=%d", errno);
+
+    /* 5. Re-open / create the database file */
+    FILE *touch = fopen(DB_PATH, "ab");
+    if (touch) fclose(touch);
+
+    db_lock();
+    int rc = SQLITE_OK;
+    for (int attempt = 0; attempt < 5; attempt++) {
+        rc = sqlite3_open(DB_PATH, &s_db);
+        if (rc == SQLITE_OK) break;
+        ESP_LOGW(TAG, "SD remount: sqlite3_open attempt %d: %s",
+                 attempt + 1, sqlite3_errmsg(s_db));
+        sqlite3_close(s_db);
+        s_db = NULL;
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+
+    if (rc == SQLITE_OK) {
+        db_exec_raw("PRAGMA journal_mode=WAL;");
+        db_exec_raw("PRAGMA synchronous=NORMAL;");
+        db_exec_raw("PRAGMA cache_size=64;");
+        db_exec_raw("PRAGMA temp_store=MEMORY;");
+        db_exec_raw("PRAGMA foreign_keys=ON;");
+        db_unlock();
+        create_tables();
+        ESP_LOGI(TAG, "SD remount: database re-opened OK");
+        return ESP_OK;
+    }
+
+    db_unlock();
+    ESP_LOGE(TAG, "SD remount: failed to reopen database");
+    return ESP_FAIL;
+}
+
+/* ── List backup files ───────────────────────────────────────── */
+/* Scans /sdcard/sd/ for attendance_*.bak files and returns a
+ * malloc'd JSON array of filenames sorted newest-first.
+ * Caller must free().                                              */
+char *db_sd_list_backups(void)
+{
+    DIR *d = opendir(SD_MOUNT "/sd");
+    if (!d) {
+        /* dir may not exist yet */
+        return strdup("[]");
+    }
+
+    /* Collect matching names into a simple fixed-size array */
+    #define MAX_BAKS 64
+    char names[MAX_BAKS][48];
+    int  n = 0;
+
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL && n < MAX_BAKS) {
+        if (strncmp(ent->d_name, "attendance_", 11) == 0 &&
+            strstr(ent->d_name, ".bak") != NULL) {
+            strncpy(names[n], ent->d_name, sizeof(names[n]) - 1);
+            names[n][sizeof(names[n]) - 1] = '\0';
+            n++;
+        }
+    }
+    closedir(d);
+
+    /* Sort descending (newest date string first via strcmp reversed) */
+    for (int i = 0; i < n - 1; i++)
+        for (int j = i + 1; j < n; j++)
+            if (strcmp(names[i], names[j]) < 0) {
+                char tmp[48];
+                strncpy(tmp,      names[i], sizeof(tmp));
+                strncpy(names[i], names[j], sizeof(names[i]));
+                strncpy(names[j], tmp,      sizeof(names[j]));
+            }
+
+    /* Build JSON array */
+    size_t cap = (size_t)(n * 56 + 8);
+    char  *out = malloc(cap);
+    if (!out) return NULL;
+    size_t pos = 0;
+    out[pos++] = '[';
+    for (int i = 0; i < n; i++) {
+        int written = snprintf(out + pos, cap - pos,
+                               "%s\"%s\"", i == 0 ? "" : ",", names[i]);
+        pos += (size_t)written;
+    }
+    out[pos++] = ']';
+    out[pos]   = '\0';
+    return out;
+}
+
+/* ── Restore from backup ─────────────────────────────────────── */
+/* Replaces the live database with the named backup file.
+ * 'filename' must be a bare filename (e.g. "attendance_2026-04-09.bak"),
+ * NOT a full path — the function prepends /sdcard/sd/ automatically.
+ * Uses SQLite's Online Backup API so the restore is atomic:
+ * if it fails halfway the live DB is unchanged.                    */
+bool db_sd_restore(const char *filename)
+{
+    if (!filename || !*filename) return false;
+
+    /* Block path traversal */
+    if (strstr(filename, "/") || strstr(filename, "..")) {
+        ESP_LOGW(TAG, "db_sd_restore: invalid filename");
+        return false;
+    }
+
+    char src_path[64];
+    snprintf(src_path, sizeof(src_path), SD_MOUNT "/sd/%s", filename);
+
+    struct stat st;
+    if (stat(src_path, &st) != 0) {
+        ESP_LOGW(TAG, "db_sd_restore: file not found: %s", src_path);
+        return false;
+    }
+
+    /* Open the backup file as the source SQLite database */
+    sqlite3 *src_db = NULL;
+    if (sqlite3_open_v2(src_path, &src_db,
+                        SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) {
+        ESP_LOGW(TAG, "db_sd_restore: cannot open source: %s",
+                 sqlite3_errmsg(src_db));
+        if (src_db) sqlite3_close(src_db);
+        return false;
+    }
+
+    /* Use backup API: source=src_db, destination=live s_db */
+    db_lock();
+    sqlite3_backup *bkp = sqlite3_backup_init(s_db, "main", src_db, "main");
+    db_unlock();
+
+    if (!bkp) {
+        ESP_LOGW(TAG, "db_sd_restore: backup_init failed");
+        sqlite3_close(src_db);
+        return false;
+    }
+
+    int rc;
+    do {
+        db_lock();
+        rc = sqlite3_backup_step(bkp, 32);
+        db_unlock();
+        if (rc == SQLITE_OK || rc == SQLITE_BUSY || rc == SQLITE_LOCKED)
+            vTaskDelay(pdMS_TO_TICKS(5));
+    } while (rc == SQLITE_OK || rc == SQLITE_BUSY || rc == SQLITE_LOCKED);
+
+    sqlite3_backup_finish(bkp);
+    sqlite3_close(src_db);
+
+    if (rc == SQLITE_DONE) {
+        ESP_LOGI(TAG, "db_sd_restore: restored from %s", src_path);
+        return true;
+    }
+    ESP_LOGW(TAG, "db_sd_restore: incomplete, rc=%d", rc);
+    return false;
 }
 
 /* ── Status JSON ─────────────────────────────────────────────── */

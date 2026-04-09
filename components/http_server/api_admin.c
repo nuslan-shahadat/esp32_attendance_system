@@ -197,6 +197,66 @@ esp_err_t api_admin_backup_post(httpd_req_t *req)
     return http_send_ok(req);
 }
 
+/* GET /api/admin/backup-list — returns JSON array of .bak filenames */
+esp_err_t api_admin_backup_list_get(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+    char *list = db_sd_list_backups();
+    if (!list) return http_send_err(req, 500, "list_failed");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_sendstr(req, list);
+    free(list);
+    return ESP_OK;
+}
+
+/* POST /api/admin/restore-backup  body: {"filename":"attendance_2026-04-09.bak"} */
+esp_err_t api_admin_restore_backup_post(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+
+    char buf[128] = {0};
+    int  len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len <= 0) return http_send_err(req, 400, "no_body");
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) return http_send_err(req, 400, "bad_json");
+
+    cJSON *fn = cJSON_GetObjectItemCaseSensitive(root, "filename");
+    if (!cJSON_IsString(fn) || !fn->valuestring || !fn->valuestring[0]) {
+        cJSON_Delete(root);
+        return http_send_err(req, 400, "missing_filename");
+    }
+
+    bool ok = db_sd_restore(fn->valuestring);
+    cJSON_Delete(root);
+
+    if (!ok) return http_send_err(req, 500, "restore_failed");
+    return http_send_ok(req);
+}
+
+/* POST /api/admin/sd-remount — soft re-mount without reboot/format */
+esp_err_t api_admin_sd_remount_post(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+    int rc = db_sd_remount();
+    if (rc != ESP_OK) return http_send_err(req, 500, "remount_failed");
+    return http_send_ok(req);
+}
+
+/* GET /api/admin/sd-health — returns {"healthy":true/false} */
+esp_err_t api_admin_sd_health_get(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+    bool healthy = db_sd_health_check();
+    char out[32];
+    snprintf(out, sizeof(out), "{\"health\":%s}", healthy ? "true" : "false");
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_sendstr(req, out);
+    return ESP_OK;
+}
+
 /* GET /api/admin/export-csv?c=7&type=students */
 esp_err_t api_admin_export_csv_get(httpd_req_t *req)
 {

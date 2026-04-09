@@ -188,10 +188,22 @@ void app_main(void)
 
         vTaskDelay(pdMS_TO_TICKS(100));
 
-        /* WiFi watchdog every ~10 s (100 × 100 ms) */
+        /* WiFi + SD watchdog every ~10 s (100 × 100 ms) */
         static uint32_t tick = 0;
         if (++tick % 100 == 0) {
             wifi_mgr_poll();
+
+            /* SD health watchdog — auto-remount if the card goes silent.
+             * This is the primary fix for the "data gone, only format helps"
+             * failure mode: we detect the silent failure within ~10 s and
+             * recover transparently without a reboot or format.            */
+            if (!db_sd_health_check()) {
+                ESP_LOGW(TAG, "SD card unresponsive — attempting soft remount");
+                if (db_sd_remount() == ESP_OK)
+                    ESP_LOGI(TAG, "SD remount successful");
+                else
+                    ESP_LOGE(TAG, "SD remount failed — data unavailable until card is re-seated");
+            }
 
             /* Nightly SD backup at 00:00–00:04 */
             char today[12];
