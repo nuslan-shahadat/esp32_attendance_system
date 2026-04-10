@@ -93,14 +93,35 @@ void app_main(void)
     /* 2. SPIFFS — HTML/CSS/JS frontend */
     ESP_ERROR_CHECK(spiffs_init());
 
-    /* 3. SD card + SQLite */
+    /* 3. SD card + SQLite
+     *
+     * db_init() already retries internally (3 full mount cycles × 5 sqlite
+     * open attempts).  We add one extra outer layer here so that a truly
+     * stubborn post-flash SPI glitch gets a few more full power-settle
+     * windows before we give up and halt.  Each outer retry calls db_init()
+     * fresh, which means the SPI bus is freed and the SD card gets another
+     * electrical reset via the per-attempt teardown inside sd_mount().     */
     db_spi_config_t spi_cfg = {
         .mosi = SD_MOSI_PIN,
         .miso = SD_MISO_PIN,
         .sck  = SD_SCK_PIN,
         .cs   = SD_CS_PIN,
     };
-    ESP_ERROR_CHECK(db_init(&spi_cfg));
+    {
+        esp_err_t db_err = ESP_FAIL;
+        for (int i = 0; i < 5 && db_err != ESP_OK; i++) {
+            if (i > 0) {
+                ESP_LOGW(TAG, "db_init retry %d/5 — waiting 4 s ...", i + 1);
+                vTaskDelay(pdMS_TO_TICKS(4000));
+            }
+            db_err = db_init(&spi_cfg);
+        }
+        if (db_err != ESP_OK) {
+            ESP_LOGE(TAG, "db_init failed after all retries — halting. "
+                          "Re-seat the SD card and reboot.");
+            while (1) vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
     db_ensure_default_classes();
     db_ensure_default_schema();
 
@@ -193,6 +214,23 @@ void app_main(void)
         if (++tick % 100 == 0) {
             wifi_mgr_poll();
 
+            /* ── Proactive NULL-handle recovery ────────────────────────────
+             * s_db can be NULL even with a perfectly healthy SD card:
+             *   • sqlite3_open() failed during boot (post-flash dirty SPI)
+             *   • sqlite3_open() failed inside a previous db_sd_remount()
+             * Check unconditionally on every 10 s watchdog tick so recovery
+             * begins at the first cycle after failure — no need to wait for
+             * the health check to fail first.
+             * Strategy: try lightweight reopen first (no unmount); if that
+             * also fails, escalate to a full SD remount.                    */
+            if (db_handle() == NULL) {
+                ESP_LOGW(TAG, "Watchdog: s_db is NULL — attempting sqlite reopen");
+                if (db_sqlite_reopen() != ESP_OK) {
+                    ESP_LOGW(TAG, "Watchdog: reopen failed — escalating to full SD remount");
+                    db_sd_remount();
+                }
+            }
+
             /* SD health watchdog — auto-remount if the card goes silent.
              *
              * FIX-BUG1 (debounce): require 2 consecutive failed health checks
@@ -237,17 +275,7 @@ void app_main(void)
                 }
             } else {
                 sd_fail_count = 0;
-                /* FIX-BUG-C: FAT is healthy, but s_db might still be NULL if
-                 * sqlite3_open() failed during a previous remount attempt.
-                 * Retry opening the database handle independently of the SD
-                 * mount — no unmount/remount needed, just clear the WAL and
-                 * call sqlite3_open() again.                                 */
-                if (db_handle() == NULL) {
-                    ESP_LOGW(TAG, "SD healthy but s_db is NULL — retrying sqlite open");
-                    esp_err_t ro = db_sqlite_reopen();
-                    if (ro != ESP_OK)
-                        ESP_LOGE(TAG, "db_sqlite_reopen failed — handle still NULL");
-                }
+                /* NULL handle already handled by the proactive check above */
             }
 
             /* Nightly SD backup at 00:00–00:04 */

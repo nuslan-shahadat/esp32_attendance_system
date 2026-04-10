@@ -96,30 +96,58 @@ static esp_err_t sd_mount(const db_spi_config_t *spi)
         .max_transfer_sz = 4096,
     };
 
-    esp_err_t ret = spi_bus_initialize(SPI2_HOST, &bus_cfg, SDSPI_DEFAULT_DMA);
-    if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        ESP_LOGE(TAG, "SPI bus init failed: %s", esp_err_to_name(ret));
-        return ret;
-    }
-
     sdspi_device_config_t slot_cfg = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_cfg.gpio_cs   = spi->cs;
     slot_cfg.host_id   = SPI2_HOST;
 
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 
-    /* Retry loop */
+    /* Retry loop — each attempt does a full SPI bus teardown + reinit.
+     *
+     * Why: after a firmware upload the chip resets but the SPI peripheral
+     * is not power-cycled.  The bus may be left mid-transaction, and the
+     * SD card's internal state machine may be waiting for a CS de-assert
+     * or a clock edge that never comes.  A single spi_bus_initialize()
+     * call before the loop cannot fix this because the card is already in
+     * an unexpected state.  Calling spi_bus_free() first tears down the
+     * ESP-IDF driver completely; the subsequent spi_bus_initialize() then
+     * pulls CS high, resets the clock, and lets the card time-out its own
+     * state machine — giving it a clean SPI negotiation on the next mount
+     * attempt.  spi_bus_free() is safe to call even when the bus was
+     * never initialised (it returns ESP_ERR_INVALID_STATE which we ignore). */
+    esp_err_t ret = ESP_FAIL;
     for (int attempt = 0; attempt < 10; attempt++) {
+        /* Tear down whatever state the bus is in before each attempt */
+        spi_bus_free(SPI2_HOST);
+        vTaskDelay(pdMS_TO_TICKS(50));   /* brief CS-high settle */
+
+        ret = spi_bus_initialize(SPI2_HOST, &bus_cfg, SDSPI_DEFAULT_DMA);
+        if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
+            ESP_LOGW(TAG, "SD mount: SPI bus init failed (attempt %d): %s",
+                     attempt + 1, esp_err_to_name(ret));
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            continue;
+        }
+
         ret = esp_vfs_fat_sdspi_mount(SD_MOUNT, &host, &slot_cfg,
                                        &mount_cfg, &s_card);
         if (ret == ESP_OK) {
-            ESP_LOGI(TAG, "SD mounted — %.0f MB",
+            ESP_LOGI(TAG, "SD mounted (attempt %d) — %.0f MB",
+                     attempt + 1,
                      (double)((uint64_t)s_card->csd.capacity * s_card->csd.sector_size)
                      / (1024.0 * 1024.0));
             return ESP_OK;
         }
+
         ESP_LOGW(TAG, "SD mount failed (attempt %d): %s",
                  attempt + 1, esp_err_to_name(ret));
+
+        /* Clean up any partial mount state before next attempt */
+        if (s_card) {
+            esp_vfs_fat_sdcard_unmount(SD_MOUNT, s_card);
+            s_card = NULL;
+        }
+        spi_bus_free(SPI2_HOST);
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
     return ret;
@@ -297,21 +325,6 @@ int db_init(const db_spi_config_t *spi)
     if (!s_mutex) return ESP_ERR_NO_MEM;
 
     s_spi_cfg = *spi;   /* store for db_sd_remount() */
-    esp_err_t ret = sd_mount(spi);
-    if (ret != ESP_OK) return ret;
-
-    /* FIX-31: Check mkdir return — failure (other than EEXIST) means nightly
-     * backups will silently fail; operator must investigate the SD card. */
-    if (mkdir(SD_MOUNT "/sd", 0775) != 0 && errno != EEXIST) {
-        ESP_LOGW(TAG, "db_init: failed to create backup dir '%s': errno=%d",
-                 SD_MOUNT "/sd", errno);
-    }
-
-    {
-    FILE *touch = fopen(DB_PATH, "ab");   /* creates if not exist, no-op if exists */
-    if (touch) fclose(touch);
-    else ESP_LOGW(TAG, "Could not pre-create %s — sqlite3_open may fail", DB_PATH);
-    }
 
     int rc = sqlite3_initialize();
     if (rc != SQLITE_OK) {
@@ -319,35 +332,90 @@ int db_init(const db_spi_config_t *spi)
         return ESP_FAIL;
     }
 
-    /* Open DB with retry */
-    for (int attempt = 0; attempt < 5; attempt++) {
-        rc = sqlite3_open(DB_PATH, &s_db);
-        if (rc == SQLITE_OK) break;
-        ESP_LOGW(TAG, "sqlite3_open failed (attempt %d): %s",
-                 attempt + 1, sqlite3_errmsg(s_db));
-        sqlite3_close(s_db);
-        s_db = NULL;
-        vTaskDelay(pdMS_TO_TICKS(2000));
+    /* ── Outer loop: full SD unmount → remount → sqlite open cycle ──────
+     *
+     * A single attempt is not enough after a firmware upload.  The flash
+     * tool resets the chip without power-cycling the SD card.  Two things
+     * can go wrong independently:
+     *
+     *  (a) The SPI bus is in a dirty state → sd_mount() now handles this
+     *      with per-attempt bus teardown + reinit (see sd_mount() above).
+     *
+     *  (b) The WAL file is partially written from the moment the firmware
+     *      upload began (the upload tool asserts RST while a write was
+     *      in flight) → sqlite3_open() tries to recover the WAL, fails,
+     *      and returns SQLITE_CORRUPT or SQLITE_NOTADB.  We clear the WAL
+     *      after two failed open attempts and retry.
+     *
+     * The outer loop lets us do a full SD unmount + remount if even the
+     * WAL-cleared open fails, giving the card a second electrical reset. */
+    esp_err_t mount_ret = ESP_FAIL;
+    for (int cycle = 0; cycle < 3; cycle++) {
+        if (cycle > 0) {
+            /* Full teardown before retry cycle */
+            if (s_db)   { sqlite3_close_v2(s_db); s_db = NULL; }
+            if (s_card) {
+                esp_vfs_fat_sdcard_unmount(SD_MOUNT, s_card);
+                s_card = NULL;
+            }
+            spi_bus_free(SPI2_HOST);
+            ESP_LOGW(TAG, "db_init: full remount cycle %d/3 ...", cycle + 1);
+            vTaskDelay(pdMS_TO_TICKS(3000));
+        }
+
+        mount_ret = sd_mount(spi);
+        if (mount_ret != ESP_OK) {
+            ESP_LOGW(TAG, "db_init: sd_mount failed on cycle %d", cycle + 1);
+            continue;   /* try full remount next cycle */
+        }
+
+        /* FIX-31: Check mkdir return */
+        if (mkdir(SD_MOUNT "/sd", 0775) != 0 && errno != EEXIST) {
+            ESP_LOGW(TAG, "db_init: failed to create backup dir: errno=%d", errno);
+        }
+
+        FILE *touch = fopen(DB_PATH, "ab");
+        if (touch) fclose(touch);
+        else ESP_LOGW(TAG, "Could not pre-create %s — sqlite3_open may fail", DB_PATH);
+
+        /* Inner loop: sqlite3_open with mid-loop WAL clear.
+         * Attempts 0-1: normal open.
+         * Attempt 2   : clear WAL/SHM first — handles post-flash corrupt WAL.
+         * Attempts 3-4: open on clean WAL.                                   */
+        for (int attempt = 0; attempt < 5; attempt++) {
+            if (attempt == 2) {
+                ESP_LOGW(TAG, "db_init: sqlite3_open failed twice — clearing WAL");
+                remove(DB_PATH "-wal");
+                remove(DB_PATH "-shm");
+            }
+            rc = sqlite3_open(DB_PATH, &s_db);
+            if (rc == SQLITE_OK) break;
+            ESP_LOGW(TAG, "db_init: sqlite3_open attempt %d: %s",
+                     attempt + 1, sqlite3_errmsg(s_db));
+            sqlite3_close(s_db);
+            s_db = NULL;
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+
+        if (s_db && rc == SQLITE_OK) break;   /* success — exit outer loop */
+
+        ESP_LOGW(TAG, "db_init: sqlite3_open failed all attempts on cycle %d", cycle + 1);
     }
-    if (!s_db || rc != SQLITE_OK) return ESP_FAIL;
+
+    if (!s_db || rc != SQLITE_OK) {
+        ESP_LOGE(TAG, "db_init: could not open database after all retry cycles");
+        return ESP_FAIL;
+    }
 
     /* Pragmas
-     * FIX-28: synchronous=OFF risks database corruption on power loss because
-     * SQLite does not wait for pages to reach storage. NORMAL is safe with WAL
-     * (committed transactions survive crashes) and is still much faster than FULL.
-     * WAL also improves concurrent read performance. */
+     * FIX-28: synchronous=NORMAL is safe with WAL and faster than FULL. */
     db_lock();
     db_exec_raw("PRAGMA journal_mode=WAL;");
     db_exec_raw("PRAGMA synchronous=NORMAL;");
     db_exec_raw("PRAGMA cache_size=64;");
     db_exec_raw("PRAGMA temp_store=MEMORY;");
     db_exec_raw("PRAGMA foreign_keys=ON;");
-    /* FIX-BUG3: Reduce WAL auto-checkpoint threshold from the SQLite default
-     * of 1000 pages to 100 pages (~400 KB).  A large WAL file means many
-     * committed writes exist only in the .wal file, not the main .db file.
-     * If the SD card glitches before a checkpoint those writes are lost.
-     * At 100 pages the WAL is kept small so very little is at risk between
-     * checkpoints even if the card disappears unexpectedly.              */
+    /* FIX-BUG3: Keep WAL small so little data is at risk between checkpoints */
     db_exec_raw("PRAGMA wal_autocheckpoint=100;");
     db_unlock();
 
