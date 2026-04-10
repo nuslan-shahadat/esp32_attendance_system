@@ -194,15 +194,60 @@ void app_main(void)
             wifi_mgr_poll();
 
             /* SD health watchdog — auto-remount if the card goes silent.
-             * This is the primary fix for the "data gone, only format helps"
-             * failure mode: we detect the silent failure within ~10 s and
-             * recover transparently without a reboot or format.            */
+             *
+             * FIX-BUG1 (debounce): require 2 consecutive failed health checks
+             * before triggering a remount.  A single transient failure can
+             * coincide with an HTTP streaming response that has released
+             * db_lock() inside STREAM_CB.  Waiting one extra cycle (~10 s)
+             * ensures any in-flight stream has finished before we call
+             * db_sd_remount().  db_sd_remount() also guards itself with
+             * db_is_streaming() as a second safety net.
+             *
+             * fail_count resets to 0 on any successful health check so a
+             * genuine card failure (2+ consecutive bad checks) still triggers
+             * the remount promptly within ~20 s.
+             *
+             * FIX-BUG-C (NULL handle guard): db_sd_health_check() only tests
+             * FAT-level I/O.  It returns true even when s_db is NULL — which
+             * happens when sqlite3_open() failed inside a previous remount
+             * attempt (e.g. WAL was corrupt at that moment).  Without the
+             * extra NULL check below, s_db stays NULL for the rest of the
+             * session because the healthy else-branch just resets the counter
+             * and never retries open().  db_sqlite_reopen() fixes that:
+             * it clears the WAL and retries sqlite3_open() without touching
+             * the already-healthy SD mount.                                  */
+            static int sd_fail_count = 0;
             if (!db_sd_health_check()) {
-                ESP_LOGW(TAG, "SD card unresponsive — attempting soft remount");
-                if (db_sd_remount() == ESP_OK)
-                    ESP_LOGI(TAG, "SD remount successful");
-                else
-                    ESP_LOGE(TAG, "SD remount failed — data unavailable until card is re-seated");
+                sd_fail_count++;
+                ESP_LOGW(TAG, "SD health check failed (streak=%d)", sd_fail_count);
+                if (sd_fail_count >= 2) {
+                    ESP_LOGW(TAG, "SD card unresponsive — attempting soft remount");
+                    esp_err_t rm = db_sd_remount();
+                    if (rm == ESP_OK) {
+                        ESP_LOGI(TAG, "SD remount successful");
+                        sd_fail_count = 0;
+                    } else if (rm == ESP_ERR_INVALID_STATE) {
+                        /* Deferred because a stream is in progress — try again
+                         * next cycle without resetting the fail counter.     */
+                        ESP_LOGW(TAG, "SD remount deferred (streaming) — will retry");
+                    } else {
+                        ESP_LOGE(TAG, "SD remount failed — re-seat the card");
+                        sd_fail_count = 0;   /* avoid hammering on every cycle */
+                    }
+                }
+            } else {
+                sd_fail_count = 0;
+                /* FIX-BUG-C: FAT is healthy, but s_db might still be NULL if
+                 * sqlite3_open() failed during a previous remount attempt.
+                 * Retry opening the database handle independently of the SD
+                 * mount — no unmount/remount needed, just clear the WAL and
+                 * call sqlite3_open() again.                                 */
+                if (db_handle() == NULL) {
+                    ESP_LOGW(TAG, "SD healthy but s_db is NULL — retrying sqlite open");
+                    esp_err_t ro = db_sqlite_reopen();
+                    if (ro != ESP_OK)
+                        ESP_LOGE(TAG, "db_sqlite_reopen failed — handle still NULL");
+                }
             }
 
             /* Nightly SD backup at 00:00–00:04 */

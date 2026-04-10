@@ -111,12 +111,30 @@ window.debounce = function(fn, delay) {
     if (!force) {
       try {
         var c = sessionStorage.getItem(CLS_KEY);
-        if (c) { if (!_promise) _promise = Promise.resolve(JSON.parse(c)); return _promise; }
+        // BUG-A FIX: Only serve the cache if it is non-empty.
+        // When the SD card crashed, /api/classes returned [] and that empty
+        // array was cached here. Every page load then read the stale [] and
+        // never contacted the server again -- even after the ESP32 was fixed
+        // or a backup was restored. An empty list is a transient failure state,
+        // not a valid steady state, so treat it as a cache miss and re-fetch.
+        if (c) {
+          var parsed = JSON.parse(c);
+          if (parsed && parsed.length > 0) {
+            if (!_promise) _promise = Promise.resolve(parsed);
+            return _promise;
+          }
+          // Stale empty cache -- remove it and fall through to re-fetch
+          sessionStorage.removeItem(CLS_KEY);
+        }
       } catch (e) {}
     }
     _promise = null;
     _promise = api('/api/classes').then(function (classes) {
-      try { sessionStorage.setItem(CLS_KEY, JSON.stringify(classes)); } catch (e) {}
+      // Only persist a non-empty result -- an empty array means the SD card
+      // is not ready yet; we never want to lock the browser into showing nothing.
+      if (classes && classes.length > 0) {
+        try { sessionStorage.setItem(CLS_KEY, JSON.stringify(classes)); } catch (e) {}
+      }
       return classes;
     });
     return _promise;

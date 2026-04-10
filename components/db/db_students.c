@@ -413,6 +413,7 @@ int db_student_delete(const char *uid, int class_num)
 esp_err_t db_students_stream_json(int class_num, int include_archived, int min_att_pct,
                                    db_student_stream_cb_t cb, void *ctx)
 {
+    db_streaming_begin();   /* FIX-BUG1 */
     db_lock();
     sqlite3 *db = db_handle();
     esp_err_t ret = ESP_OK;
@@ -433,7 +434,7 @@ esp_err_t db_students_stream_json(int class_num, int include_archived, int min_a
 
     /* ── Open the JSON array ── */
     STREAM_CB("[", 1);
-    if (ret != ESP_OK) { db_unlock(); return ret; }
+    if (ret != ESP_OK) { db_unlock(); db_streaming_end(); return ret; }
 
     /* ── Query — no GROUP BY, no LEFT JOIN, no temp B-tree ──────────
      * SQLITE_OMIT_TEMPDB means SQLite cannot allocate a temp sort buffer,
@@ -520,5 +521,6 @@ esp_err_t db_students_stream_json(int class_num, int include_archived, int min_a
     }
 
     db_unlock();
+    db_streaming_end();   /* FIX-BUG1 */
     return ret;
 }

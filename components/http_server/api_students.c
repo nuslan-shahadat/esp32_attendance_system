@@ -111,9 +111,9 @@ esp_err_t api_students_register_post(httpd_req_t *req)
     if (strlen(uid) < 1)
         ret = http_send_err(req, 400, "uid_required");
     else {
-        db_student_register(auth_get_selected_class(), uid, name, roll, batchtime,
-                            extra_str ? extra_str : "{}");
-        ret = http_send_ok(req);
+        int rc = db_student_register(auth_get_selected_class(), uid, name, roll, batchtime,
+                                     extra_str ? extra_str : "{}");
+        ret = (rc == 0) ? http_send_ok(req) : http_send_err(req, 409, "duplicate_uid");
     }
     if (extra_str) free(extra_str);
     cJSON_Delete(root);

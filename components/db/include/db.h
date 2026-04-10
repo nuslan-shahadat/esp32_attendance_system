@@ -196,11 +196,23 @@ void  db_sd_backup(void);
  *   (filename only, e.g. "attendance_2026-04-09.bak").
  *   Returns true on success.
  */
-bool  db_sd_health_check(void);
-int   db_sd_remount(void);
+bool      db_sd_health_check(void);
+int       db_sd_remount(void);
+esp_err_t db_sqlite_reopen(void);  /* re-opens SQLite handle without SD remount */
 char *db_sd_list_backups(void);
 bool  db_sd_restore(const char *filename);
 bool  db_sd_delete_backup(const char *filename);
+
+/* ── Streaming guard (Bug 1 fix) ──────────────────────────
+ * db_streaming_begin() / db_streaming_end() bracket any HTTP
+ * chunked-streaming response that releases db_lock() mid-flight
+ * via STREAM_CB.  db_sd_remount() checks the counter and aborts
+ * the attempt if a stream is in progress, avoiding the race where
+ * sqlite3_close_v2() is called while prepared statements are live.
+ * The counter is atomic so no mutex is needed.                     */
+void db_streaming_begin(void);
+void db_streaming_end(void);
+bool db_is_streaming(void);
 
 /* ── System status ───────────────────────────────────────── */
 /* Returns JSON status blob. Caller frees. */

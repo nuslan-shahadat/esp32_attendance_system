@@ -857,7 +857,13 @@
         showToast('Restoring from ' + filename + '…');
         api('/api/admin/restore-backup', 'POST', { filename: filename })
           .then(function () {
-            showToast('Restore successful ✔ — page will reload');
+            showToast('Restore successful \u2714 \u2014 page will reload');
+            // BUG-B FIX: Clear the classes and session caches before reloading.
+            // Without this, window.location.reload() serves the stale sessionStorage
+            // cache (which may still hold [] from when the SD card was down), so
+            // the restored data is never visible even though the server has it.
+            if (typeof invalidateClasses === 'function') invalidateClasses();
+            if (typeof invalidateSession === 'function') invalidateSession();
             setTimeout(function () { window.location.reload(); }, 1800);
           })
           .catch(function (e) {

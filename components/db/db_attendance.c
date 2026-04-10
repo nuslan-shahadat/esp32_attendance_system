@@ -93,6 +93,12 @@ static void att_json_escape(const char *src, char *dst, size_t dst_len)
  * No large StrBuf is built in memory. Lock is held only while reading SQLite. */
 esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
 {
+    /* FIX-BUG1: Signal that a streaming response is in progress.  The watchdog
+     * in main.c checks db_is_streaming() and defers db_sd_remount() until the
+     * response completes, preventing sqlite3_close_v2() from being called while
+     * our prepared statements below are live (STREAM_CB releases db_lock()
+     * between steps, opening a window for the watchdog to fire).             */
+    db_streaming_begin();
     db_lock();
     sqlite3 *db = db_handle();
     esp_err_t ret = ESP_OK;
@@ -138,7 +144,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
         today, total, present_td, absent_td, total_rec);
 
     STREAM_CB(hdr, n);
-    if (ret != ESP_OK) { db_unlock(); return ret; }
+    if (ret != ESP_OK) { db_unlock(); db_streaming_end(); return ret; }
 
     /* ── Today tab: one student per chunk (true streaming) ── */
     {
@@ -301,6 +307,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
     if (ret == ESP_OK) { STREAM_CB("]}", 2); }
 
     db_unlock();
+    db_streaming_end();   /* FIX-BUG1: clear streaming guard */
     return ret;
 }
 
@@ -310,6 +317,7 @@ esp_err_t db_attendance_stream_json(int class_num, db_stream_cb_t cb, void *ctx)
 esp_err_t db_report_stream_json(int class_num, const char *month_prefix,
                                 int min_att_pct, db_stream_cb_t cb, void *ctx)
 {
+    db_streaming_begin();   /* FIX-BUG1 */
     db_lock();
     sqlite3 *db = db_handle();
     esp_err_t ret = ESP_OK;
@@ -338,7 +346,7 @@ esp_err_t db_report_stream_json(int class_num, const char *month_prefix,
                       "{\"class_days\":%d,\"min_pct\":%d,\"rows\":[",
                       class_days, min_att_pct);
     STREAM_CB(hdr, hn);
-    if (ret != ESP_OK) { db_unlock(); return ret; }
+    if (ret != ESP_OK) { db_unlock(); db_streaming_end(); return ret; }
 
     /* Stream each student row one by one */
     if (class_days > 0) {
@@ -399,6 +407,7 @@ esp_err_t db_report_stream_json(int class_num, const char *month_prefix,
     if (ret == ESP_OK) { STREAM_CB("]}", 2); }
 
     db_unlock();
+    db_streaming_end();   /* FIX-BUG1 */
     return ret;
 }
 

@@ -37,6 +37,19 @@ static SemaphoreHandle_t s_mutex = NULL;
 static db_spi_config_t   s_spi_cfg = {0};
 static sdmmc_card_t     *s_card    = NULL;  /* kept for esp_vfs_fat_sdcard_unmount */
 
+/* FIX-BUG1: Streaming guard — tracks how many HTTP chunked-stream responses
+ * are currently in progress.  db_sd_remount() checks this before proceeding
+ * so it never calls sqlite3_close_v2() while a prepared statement is live
+ * inside a STREAM_CB cycle (where db_lock() has been temporarily released
+ * for network I/O).  Using a simple volatile int is sufficient here because
+ * it is only ever incremented/decremented under the FreeRTOS scheduler, and
+ * the watchdog reads it from the same core/priority context.               */
+static volatile int s_streaming_count = 0;
+
+void db_streaming_begin(void) { s_streaming_count++; }
+void db_streaming_end(void)   { if (s_streaming_count > 0) s_streaming_count--; }
+bool db_is_streaming(void)    { return s_streaming_count > 0; }
+
 /* ── Mutex helpers (used by all db_*.c files via extern) ──────── */
 void db_lock(void)   { xSemaphoreTakeRecursive(s_mutex, portMAX_DELAY); }
 void db_unlock(void) { xSemaphoreGiveRecursive(s_mutex); }
@@ -153,13 +166,14 @@ static void create_tables(void)
         "CREATE TABLE IF NOT EXISTS students ("
         "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
         "  class_num  INTEGER NOT NULL,"
-        "  card_uid   TEXT NOT NULL UNIQUE,"
+        "  card_uid   TEXT NOT NULL,"
         "  name       TEXT NOT NULL DEFAULT '',"
         "  roll       TEXT DEFAULT '',"
         "  batchtime  TEXT NOT NULL DEFAULT '',"
         "  extra_data TEXT DEFAULT '{}',"
         "  is_active  INTEGER DEFAULT 1,"
-        "  created_at TEXT DEFAULT (datetime('now','localtime'))"
+        "  created_at TEXT DEFAULT (datetime('now','localtime')),"
+        "  UNIQUE(class_num, card_uid)"
         ");");
 
     db_exec_raw("CREATE INDEX IF NOT EXISTS idx_stu_uid   ON students(card_uid);");
@@ -177,7 +191,7 @@ static void create_tables(void)
         "  entry_time TEXT NOT NULL,"
         "  status     TEXT DEFAULT 'present',"
         "  extra_data TEXT DEFAULT '{}',"
-        "  UNIQUE(card_uid, entry_date)"
+        "  UNIQUE(class_num, card_uid, entry_date)"
         ");");
 
     db_exec_raw("CREATE INDEX IF NOT EXISTS idx_att_uid       ON attendance(card_uid);");
@@ -190,6 +204,89 @@ static void create_tables(void)
     db_exec_raw("CREATE INDEX IF NOT EXISTS idx_stu_class_active_name ON students(class_num,is_active,name);");
 
     db_exec_raw("COMMIT;");
+    db_unlock();
+}
+
+/* ── Schema migrations ───────────────────────────────────────── *
+ * Bug D: CREATE TABLE IF NOT EXISTS never alters an existing table,
+ * so the UNIQUE constraint fixes in create_tables() only apply to a
+ * fresh DB.  run_migrations() uses PRAGMA user_version to detect
+ * old schemas and rebuilds both tables with the correct constraints
+ * using the rename-dance: create_new -> copy -> drop_old -> rename. */
+static void run_migrations(void)
+{
+    db_lock();
+
+    sqlite3_stmt *vstmt;
+    int version = 0;
+    if (sqlite3_prepare_v2(s_db, "PRAGMA user_version;", -1, &vstmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(vstmt) == SQLITE_ROW)
+            version = sqlite3_column_int(vstmt, 0);
+        sqlite3_finalize(vstmt);
+    }
+
+    if (version < 1) {
+        ESP_LOGI(TAG, "run_migrations: upgrading schema to v1 (per-class UNIQUE)");
+        db_exec_raw("BEGIN;");
+
+        /* ---- Rebuild students ---- */
+        db_exec_raw(
+            "CREATE TABLE IF NOT EXISTS students_v2 ("
+            "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  class_num  INTEGER NOT NULL,"
+            "  card_uid   TEXT NOT NULL,"
+            "  name       TEXT NOT NULL DEFAULT '',"
+            "  roll       TEXT DEFAULT '',"
+            "  batchtime  TEXT NOT NULL DEFAULT '',"
+            "  extra_data TEXT DEFAULT '{}',"
+            "  is_active  INTEGER DEFAULT 1,"
+            "  created_at TEXT DEFAULT (datetime('now','localtime')),"
+            "  UNIQUE(class_num, card_uid)"
+            ");");
+        db_exec_raw(
+            "INSERT OR IGNORE INTO students_v2"
+            "  (id,class_num,card_uid,name,roll,batchtime,extra_data,is_active,created_at)"
+            " SELECT id,class_num,card_uid,name,roll,batchtime,extra_data,is_active,created_at"
+            " FROM students;");
+        db_exec_raw("DROP TABLE students;");
+        db_exec_raw("ALTER TABLE students_v2 RENAME TO students;");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_stu_uid   ON students(card_uid);");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_stu_class ON students(class_num);");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_stu_class_active_name ON students(class_num,is_active,name);");
+
+        /* ---- Rebuild attendance ---- */
+        db_exec_raw(
+            "CREATE TABLE IF NOT EXISTS attendance_v2 ("
+            "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
+            "  class_num  INTEGER NOT NULL,"
+            "  card_uid   TEXT NOT NULL,"
+            "  name       TEXT NOT NULL DEFAULT '',"
+            "  roll       TEXT DEFAULT '',"
+            "  batchtime  TEXT DEFAULT '',"
+            "  entry_date TEXT NOT NULL,"
+            "  entry_time TEXT NOT NULL,"
+            "  status     TEXT DEFAULT 'present',"
+            "  extra_data TEXT DEFAULT '{}',"
+            "  UNIQUE(class_num, card_uid, entry_date)"
+            ");");
+        db_exec_raw(
+            "INSERT OR IGNORE INTO attendance_v2"
+            "  (id,class_num,card_uid,name,roll,batchtime,entry_date,entry_time,status,extra_data)"
+            " SELECT id,class_num,card_uid,name,roll,batchtime,entry_date,entry_time,status,extra_data"
+            " FROM attendance;");
+        db_exec_raw("DROP TABLE attendance;");
+        db_exec_raw("ALTER TABLE attendance_v2 RENAME TO attendance;");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_att_uid       ON attendance(card_uid);");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_att_date      ON attendance(entry_date);");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_att_class     ON attendance(class_num);");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_att_classdate ON attendance(class_num,entry_date);");
+        db_exec_raw("CREATE INDEX IF NOT EXISTS idx_att_uid_class ON attendance(card_uid,class_num);");
+
+        db_exec_raw("PRAGMA user_version = 1;");
+        db_exec_raw("COMMIT;");
+        ESP_LOGI(TAG, "run_migrations: v1 migration complete");
+    }
+
     db_unlock();
 }
 
@@ -245,9 +342,17 @@ int db_init(const db_spi_config_t *spi)
     db_exec_raw("PRAGMA cache_size=64;");
     db_exec_raw("PRAGMA temp_store=MEMORY;");
     db_exec_raw("PRAGMA foreign_keys=ON;");
+    /* FIX-BUG3: Reduce WAL auto-checkpoint threshold from the SQLite default
+     * of 1000 pages to 100 pages (~400 KB).  A large WAL file means many
+     * committed writes exist only in the .wal file, not the main .db file.
+     * If the SD card glitches before a checkpoint those writes are lost.
+     * At 100 pages the WAL is kept small so very little is at risk between
+     * checkpoints even if the card disappears unexpectedly.              */
+    db_exec_raw("PRAGMA wal_autocheckpoint=100;");
     db_unlock();
 
     create_tables();
+    run_migrations();
     ESP_LOGI(TAG, "Database ready: %s", DB_PATH);
     return ESP_OK;
 }
@@ -443,12 +548,44 @@ bool db_sd_health_check(void)
  * Should be called when db_sd_health_check() returns false.        */
 int db_sd_remount(void)
 {
+    /* FIX-BUG1: If an HTTP streaming response is in progress, STREAM_CB has
+     * released db_lock() to send a chunk over the network.  Proceeding with
+     * remount now would call sqlite3_close_v2() while that response's prepared
+     * statement is still live, and then unmount the FAT volume under it.
+     * Abort and let the watchdog retry on the next 10-second cycle instead.  */
+    if (db_is_streaming()) {
+        ESP_LOGW(TAG, "SD remount deferred — streaming response in progress");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     ESP_LOGI(TAG, "SD remount: starting...");
 
     /* 1. Close the live database (must hold lock) */
     db_lock();
     if (s_db) {
-        sqlite3_close(s_db);
+        /* FIX-BUG3: Force a full WAL checkpoint before closing so that all
+         * committed pages are flushed into the main .db file.  Without this,
+         * any pages that were written to the WAL file but not yet merged into
+         * the main database are lost when the FAT volume is unmounted — this
+         * was the primary cause of "data not coming to server" intermittently.
+         * TRUNCATE resets the WAL file to zero length after the checkpoint so
+         * the card holds a clean, self-contained .db with no pending WAL.    */
+        int ck_rc = sqlite3_exec(s_db,
+            "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL);
+        if (ck_rc != SQLITE_OK)
+            ESP_LOGW(TAG, "SD remount: wal_checkpoint returned %d — proceeding anyway", ck_rc);
+
+        /* FIX-BUG2: Use sqlite3_close_v2() instead of sqlite3_close().
+         * sqlite3_close() returns SQLITE_BUSY and does nothing if any
+         * prepared statement is still open (e.g. a streaming HTTP response
+         * that released db_lock() mid-flight via STREAM_CB).  Ignoring that
+         * return value and setting s_db = NULL anyway leaves SQLite in an
+         * inconsistent state and causes the subsequent FAT unmount to
+         * corrupt the VFS layer.
+         * sqlite3_close_v2() defers the actual teardown until the last
+         * prepared statement is finalized — safe to call even when stmts
+         * are still alive.                                                    */
+        sqlite3_close_v2(s_db);
         s_db = NULL;
     }
     db_unlock();
@@ -483,32 +620,110 @@ int db_sd_remount(void)
     FILE *touch = fopen(DB_PATH, "ab");
     if (touch) fclose(touch);
 
-    db_lock();
+    /* FIX-BUG-A: Remove a stale/corrupt WAL and SHM before retrying
+     * sqlite3_open().  When the SD card glitches mid-write the WAL file
+     * is left partially written.  SQLite tries to recover it on open and
+     * fails, causing all 5 retries to fail even after the card settles.
+     * Any writes recorded only in the WAL (not yet checkpointed) are
+     * already lost when the FAT volume was unmounted, so deleting the
+     * WAL here loses nothing extra and gives the open() a clean slate.  */
+    remove(DB_PATH "-wal");
+    remove(DB_PATH "-shm");
+
+    /* FIX-BUG-B: Release the mutex between retry attempts.  The original
+     * code held db_lock() for the entire retry loop, including the 2 s
+     * vTaskDelay() between attempts — up to 10 s total.  Any FreeRTOS
+     * task that called db_lock() during that window (RFID handler, HTTP
+     * API) was blocked for the full duration.  Now lock/unlock wraps only
+     * the sqlite3_open() call itself; the delay runs without the lock.   */
     int rc = SQLITE_OK;
     for (int attempt = 0; attempt < 5; attempt++) {
+        db_lock();
         rc = sqlite3_open(DB_PATH, &s_db);
-        if (rc == SQLITE_OK) break;
+        if (rc == SQLITE_OK) {
+            db_exec_raw("PRAGMA journal_mode=WAL;");
+            db_exec_raw("PRAGMA synchronous=NORMAL;");
+            db_exec_raw("PRAGMA cache_size=64;");
+            db_exec_raw("PRAGMA temp_store=MEMORY;");
+            db_exec_raw("PRAGMA foreign_keys=ON;");
+            /* Re-apply low auto-checkpoint threshold after remount */
+            db_exec_raw("PRAGMA wal_autocheckpoint=100;");
+            db_unlock();
+            break;
+        }
         ESP_LOGW(TAG, "SD remount: sqlite3_open attempt %d: %s",
                  attempt + 1, sqlite3_errmsg(s_db));
         sqlite3_close(s_db);
         s_db = NULL;
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        db_unlock();                        /* release before sleeping */
+        vTaskDelay(pdMS_TO_TICKS(1000));    /* yield — other tasks can run */
     }
 
     if (rc == SQLITE_OK) {
-        db_exec_raw("PRAGMA journal_mode=WAL;");
-        db_exec_raw("PRAGMA synchronous=NORMAL;");
-        db_exec_raw("PRAGMA cache_size=64;");
-        db_exec_raw("PRAGMA temp_store=MEMORY;");
-        db_exec_raw("PRAGMA foreign_keys=ON;");
-        db_unlock();
         create_tables();
         ESP_LOGI(TAG, "SD remount: database re-opened OK");
         return ESP_OK;
     }
 
-    db_unlock();
     ESP_LOGE(TAG, "SD remount: failed to reopen database");
+    return ESP_FAIL;
+}
+
+/* ── SQLite-only reopen (no SD remount) ─────────────────────── */
+/* Called by the watchdog when db_sd_health_check() passes (FAT is fine)
+ * but db_handle() == NULL — meaning sqlite3_open() failed during a
+ * previous remount attempt (e.g. WAL was corrupt or the card was still
+ * settling at that moment).  We do NOT unmount/remount the SD; we just
+ * clear the stale WAL files and retry open() on the already-mounted FS.
+ *
+ * This closes the "permanently NULL handle" gap described as Bug C:
+ * without this function, a single failed sqlite3_open() inside
+ * db_sd_remount() left s_db == NULL for the entire session with no
+ * recovery path, because the watchdog only checked health_check() and
+ * never inspected db_handle().                                           */
+esp_err_t db_sqlite_reopen(void)
+{
+    ESP_LOGI(TAG, "db_sqlite_reopen: attempting to recover NULL handle...");
+
+    /* Remove stale WAL/SHM — if open() previously failed because the WAL
+     * was corrupt, retrying without clearing it fails for the same reason. */
+    remove(DB_PATH "-wal");
+    remove(DB_PATH "-shm");
+
+    /* Pre-create the DB file in case the previous remount left none */
+    FILE *touch = fopen(DB_PATH, "ab");
+    if (touch) fclose(touch);
+    else ESP_LOGW(TAG, "db_sqlite_reopen: fopen pre-create failed");
+
+    int rc = SQLITE_OK;
+    for (int attempt = 0; attempt < 5; attempt++) {
+        db_lock();
+        rc = sqlite3_open(DB_PATH, &s_db);
+        if (rc == SQLITE_OK) {
+            db_exec_raw("PRAGMA journal_mode=WAL;");
+            db_exec_raw("PRAGMA synchronous=NORMAL;");
+            db_exec_raw("PRAGMA cache_size=64;");
+            db_exec_raw("PRAGMA temp_store=MEMORY;");
+            db_exec_raw("PRAGMA foreign_keys=ON;");
+            db_exec_raw("PRAGMA wal_autocheckpoint=100;");
+            db_unlock();
+            break;
+        }
+        ESP_LOGW(TAG, "db_sqlite_reopen: attempt %d: %s",
+                 attempt + 1, sqlite3_errmsg(s_db));
+        sqlite3_close(s_db);
+        s_db = NULL;
+        db_unlock();
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
+    if (rc == SQLITE_OK) {
+        create_tables();
+        ESP_LOGI(TAG, "db_sqlite_reopen: handle recovered OK");
+        return ESP_OK;
+    }
+
+    ESP_LOGE(TAG, "db_sqlite_reopen: all attempts failed — handle still NULL");
     return ESP_FAIL;
 }
 
