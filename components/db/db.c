@@ -908,6 +908,16 @@ bool db_sd_restore(const char *filename)
     sqlite3_close(src_db);
 
     if (rc == SQLITE_DONE) {
+        /* Flush the page cache so restored pages are read fresh,
+         * then truncate the stale WAL that belongs to the old DB. */
+        db_lock();
+        db_exec_raw("PRAGMA cache_size=1;");
+        db_exec_raw("PRAGMA cache_size=64;");
+        int ck_rc = sqlite3_exec(s_db,
+                "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL);
+        if (ck_rc != SQLITE_OK)
+            ESP_LOGW(TAG, "db_sd_restore: wal_checkpoint returned %d — proceeding anyway", ck_rc);
+        db_unlock();
         ESP_LOGI(TAG, "db_sd_restore: restored from %s", src_path);
         return true;
     }

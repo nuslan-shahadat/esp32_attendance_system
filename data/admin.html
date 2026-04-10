@@ -63,6 +63,17 @@
     }
     .batch-tag-del:hover { opacity: 1; }
 
+    /* ── Import / Export (refactored) ── */
+    .import-export-pair {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .import-export-pair > div {
+      flex: 1;
+      min-width: 260px;
+    }
+
     /* ── Import section ── */
     .import-card {
       background: var(--stat-bg); border: 1px dashed var(--border);
@@ -100,6 +111,7 @@
       .import-row { flex-direction: column; align-items: stretch; }
       .batch-add-row { flex-direction: column; align-items: stretch; }
       .batch-time-input { flex: none; width: 100%; }
+      .import-export-pair { flex-direction: column; }
     }
 
     /* ── Upload Progress Modal ── */
@@ -148,7 +160,6 @@
 
 <!-- Hidden file inputs -->
 <input type="file" id="csv-file"     accept=".csv"      onchange="importCsv()">
-<!-- FIX-17: Renamed att-zip-file→att-csv-file and importAttZip→importAttCsv -->
 <input type="file" id="att-csv-file" accept=".csv" onchange="importAttCsv()">
 
 <div class="page-wrap">
@@ -209,91 +220,68 @@
         </div>
       </div>
 
-      <!-- DATA IMPORT / EXPORT -->
+      <!-- DATA IMPORT / EXPORT — REFACTORED (clean side-by-side layout) -->
       <div class="admin-box">
         <div class="admin-box-header">
           <div class="admin-box-icon">⇅</div>
           <div>
             <div class="admin-box-title">Data Import / Export</div>
-            <div class="admin-box-desc">Transfer student and attendance data</div>
+            <div class="admin-box-desc">Transfer student and attendance data via CSV</div>
           </div>
         </div>
 
-        <!-- Registration Data -->
+        <!-- Student Registration Data -->
         <div class="field-group">
-          <div class="field-group-title">📋 Registration Data</div>
-          <div class="field">
-            <label>Export Class</label>
-            <div class="sel-wrap"><select id="exp-cls"></select></div>
-          </div>
-          <div class="data-btns" style="margin-bottom:.75rem">
-            <button class="btn btn-sm btn-outline" onclick="exportCsv('students')">↓ Students CSV</button>
-          </div>
-
-          <!-- Import card — FIXED: sends file as raw body instead of broken FormData -->
-          <div class="import-card">
-            <div class="import-card-title">↑ Import Students CSV</div>
-            <div class="import-row">
-              <div class="sel-wrap">
-                <select id="imp-cls"></select>
-              </div>
-              <div class="sel-wrap">
-                <select id="imp-type">
-                  <option value="students">Students</option>
-                  <option value="attendance">Attendance</option>
-                </select>
-              </div>
-              <button class="btn btn-sm" onclick="document.getElementById('csv-file').click()">
-                ↑ Choose CSV
-              </button>
+          <div class="field-group-title">📋 Student Registration Data</div>
+          <div class="import-export-pair">
+            <!-- Export -->
+            <div>
+              <label style="display:block; margin-bottom:.4rem; font-weight:500; font-size:.85rem;">Export Students CSV</label>
+              <div class="sel-wrap"><select id="exp-cls"></select></div>
+              <button class="btn btn-sm btn-outline" onclick="exportCsv('students')" style="margin-top:.75rem; width:100%;">↓ Download CSV</button>
             </div>
-            <div class="hint" style="margin-top:.5rem">Select class and type, then choose a .csv file.</div>
+
+            <!-- Import -->
+            <div class="import-card">
+              <div class="import-card-title">↑ Import Students CSV</div>
+              <div class="import-row">
+                <div class="sel-wrap">
+                  <select id="imp-cls"></select>
+                </div>
+                <button class="btn btn-sm" onclick="document.getElementById('csv-file').click()">
+                  ↑ Choose CSV
+                </button>
+              </div>
+              <div class="hint" style="margin-top:.5rem">CSV must match the current student schema.</div>
+            </div>
           </div>
         </div>
 
         <!-- Attendance Data -->
-        <div class="field-group">
+        <div class="field-group" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">
           <div class="field-group-title">📅 Attendance Data</div>
-          <div class="field">
-            <label>Export Class</label>
-            <div class="sel-wrap"><select id="att-exp-cls"></select></div>
-          </div>
-          <div class="data-btns">
-            <button class="btn btn-sm btn-outline" onclick="exportAttCsv()">↓ Attendance CSV</button>
-            <button class="btn btn-sm btn-outline" onclick="exportAttZipAll()">↓ All Data (ZIP)</button>
-          </div>
-          <div class="import-card" style="margin-top:.75rem">
-            <div class="import-card-title">↑ Import Attendance CSV</div>
-            <!-- FIX-16: Dedicated class selector for attendance import so it doesn't
-                 silently fall back to the student import selector (imp-cls). -->
-            <div class="sel-wrap" style="margin-bottom:.5rem"><select id="att-imp-cls"></select></div>
-            <!-- FIX-17: Renamed id from att-zip-file→att-csv-file and handler from
-                 importAttZip→importAttCsv to match the actual CSV functionality. -->
-            <button class="btn btn-sm" onclick="document.getElementById('att-csv-file').click()">↑ Choose CSV</button>
-            <div class="hint" style="margin-top:.5rem">Select a CSV file exported from this system.</div>
-          </div>
-        </div>
+          <div class="import-export-pair">
+            <!-- Export -->
+            <div>
+              <label style="display:block; margin-bottom:.4rem; font-weight:500; font-size:.85rem;">Export Attendance</label>
+              <div class="sel-wrap"><select id="att-exp-cls"></select></div>
+              <div class="data-btns" style="margin-top:.75rem;">
+                <button class="btn btn-sm btn-outline" onclick="exportAttCsv()">↓ Attendance CSV</button>
+                <button class="btn btn-sm btn-outline" onclick="exportAttZipAll()">↓ All Data (ZIP)</button>
+              </div>
+            </div>
 
-        <!-- SD Backup & Restore -->
-        <div class="field-group">
-          <div class="field-group-title">💾 SD Card Backup &amp; Restore</div>
-
-          <!-- SD health row -->
-          <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;flex-wrap:wrap;">
-            <span style="font-size:.85rem;color:var(--muted)">SD Status:</span>
-            <span id="sd-health-badge" style="font-size:.82rem;padding:.2rem .6rem;border-radius:99px;background:var(--card2);color:var(--muted)">checking…</span>
-            <button class="btn btn-sm" style="width:auto" onclick="doSdRemount()" id="sd-remount-btn" title="Attempt soft re-mount without reboot or format">🔄 Re-mount SD</button>
-          </div>
-
-          <!-- Backup / restore buttons -->
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;">
-            <button class="btn btn-sm" style="width:auto" onclick="doBackup()">▣ Backup to SD Now</button>
-            <button class="btn btn-sm" style="width:auto" onclick="toggleBackupList()">📋 Show Backups</button>
-          </div>
-
-          <!-- Backup file list (hidden by default) -->
-          <div id="backup-list-wrap" style="display:none">
-            <div id="backup-list-inner" style="font-size:.85rem;color:var(--muted);padding:.4rem 0">Loading…</div>
+            <!-- Import -->
+            <div class="import-card">
+              <div class="import-card-title">↑ Import Attendance CSV</div>
+              <div class="import-row">
+                <div class="sel-wrap">
+                  <select id="att-imp-cls"></select>
+                </div>
+                <button class="btn btn-sm" onclick="document.getElementById('att-csv-file').click()">↑ Choose CSV</button>
+              </div>
+              <div class="hint" style="margin-top:.5rem">Select a CSV file exported from this system.</div>
+            </div>
           </div>
         </div>
       </div>
@@ -320,7 +308,7 @@
     <!-- ═══════════════════════ ADVANCED PANEL ════════════════════════ -->
     <div id="panel-advanced" style="display:none">
 
-      <!-- COLUMN SCHEMA — with proper field spacing -->
+      <!-- COLUMN SCHEMA -->
       <div class="admin-box">
         <div class="admin-box-header">
           <div class="admin-box-icon">⊞</div>
@@ -351,7 +339,7 @@
         </div>
       </div>
 
-      <!-- APPEARANCE — font as dropdown, not grid -->
+      <!-- APPEARANCE -->
       <div class="admin-box">
         <div class="admin-box-header">
           <div class="admin-box-icon">✦</div>
@@ -361,7 +349,7 @@
           </div>
         </div>
 
-        <!-- Font Family — dropdown instead of grid -->
+        <!-- Font Family -->
         <div class="field" style="margin-bottom:1.1rem">
           <label>Font Family</label>
           <div class="sel-wrap">
@@ -400,7 +388,7 @@
         </div>
       </div>
 
-      <!-- SYSTEM RESTART (renamed from ESP32 Reboot, moved before Danger Zone) -->
+      <!-- SYSTEM RESTART -->
       <div class="admin-box">
         <div class="admin-box-header">
           <div class="admin-box-icon">↺</div>
@@ -419,7 +407,34 @@
         </div>
       </div>
 
-      <!-- LIVE LOG REMOVED per requirements -->
+      <!-- SD CARD BACKUP & RESTORE (moved from Basic panel) -->
+      <div class="admin-box">
+        <div class="admin-box-header">
+          <div class="admin-box-icon">💾</div>
+          <div>
+            <div class="admin-box-title">SD Card Backup &amp; Restore</div>
+            <div class="admin-box-desc">Manage database backups stored on the SD card</div>
+          </div>
+        </div>
+
+        <!-- SD health row -->
+        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;flex-wrap:wrap;">
+          <span style="font-size:.85rem;color:var(--muted)">SD Status:</span>
+          <span id="sd-health-badge" style="font-size:.82rem;padding:.2rem .6rem;border-radius:99px;background:var(--card2);color:var(--muted)">checking…</span>
+          <button class="btn btn-sm" style="width:auto" onclick="doSdRemount()" id="sd-remount-btn" title="Attempt soft re-mount without reboot or format">🔄 Re-mount SD</button>
+        </div>
+
+        <!-- Backup / restore buttons -->
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;">
+          <button class="btn btn-sm" style="width:auto" onclick="doBackup()">▣ Backup to SD Now</button>
+          <button class="btn btn-sm" style="width:auto" onclick="toggleBackupList()">📋 Show Backups</button>
+        </div>
+
+        <!-- Backup file list (hidden by default) -->
+        <div id="backup-list-wrap" style="display:none">
+          <div id="backup-list-inner" style="font-size:.85rem;color:var(--muted);padding:.4rem 0">Loading…</div>
+        </div>
+      </div>
 
       <!-- DANGER ZONE -->
       <div class="admin-box" style="margin-bottom:0">
@@ -483,7 +498,7 @@
     checkSdHealth();
   });
 
-  /* ── Panel switch (live log removed — no startLiveLog call) ── */
+  /* ── Panel switch ── */
   function switchPanel(name) {
     document.getElementById('panel-basic').style.display    = name === 'basic'    ? 'block' : 'none';
     document.getElementById('panel-advanced').style.display = name === 'advanced' ? 'block' : 'none';
@@ -505,7 +520,6 @@
         : '<div class="empty" style="padding:1rem 0">No classes yet.</div>';
       document.getElementById('classes-list').innerHTML = html;
 
-      // FIX-16: Added 'att-imp-cls' — the dedicated attendance import class selector.
       ['batch-cls','exp-cls','att-exp-cls','imp-cls','att-imp-cls','reset-cls'].forEach(function (id) {
         var sel = document.getElementById(id);
         if (!sel) return;
@@ -535,7 +549,7 @@
     });
   }
 
-  /* ── Batches — modern pill tag display ── */
+  /* ── Batches ── */
   function loadBatches() {
     var sel = document.getElementById('batch-cls');
     if (!sel || !sel.value) return;
@@ -578,7 +592,7 @@
       if (data && data.min_att_pct != null) {
         document.getElementById('min-att').value = data.min_att_pct;
       }
-    }).catch(function () { /* non-fatal: field keeps its default */ });
+    }).catch(function () { /* non-fatal */ });
   }
 
   function saveSettings() {
@@ -661,11 +675,7 @@
     window.open('/api/admin/export-all-zip', '_blank');
   }
 
-  /* ── Import CSV — FIXED ──────────────────────────────────────────────
-     Old bug: used FormData/multipart which the ESP32 server cannot parse.
-              Server reads classnum+type from query params and body as raw CSV text.
-     Fix: read file as text, POST to ?classnum=X&type=Y with plain body.
-  ────────────────────────────────────────────────────────────────────── */
+  /* ── Import CSV (refactored — now dedicated to students) ── */
   function showUploadProgress(label, sub) {
     document.getElementById('upload-progress-label').textContent = label || 'Uploading…';
     document.getElementById('upload-progress-sub').textContent   = sub   || 'Please wait, do not close this page';
@@ -679,8 +689,9 @@
     var file = document.getElementById('csv-file').files[0];
     if (!file) return;
     var cn   = document.getElementById('imp-cls').value;
-    var type = document.getElementById('imp-type').value;
-    if (!cn || !type) { showToast('Select class and type first', true); return; }
+    if (!cn) { showToast('Select class first', true); return; }
+
+    var type = 'students';   // Now dedicated — no more type selector
 
     var reader = new FileReader();
     reader.onload = function (e) {
@@ -709,14 +720,9 @@
     reader.readAsText(file);
   }
 
-  // FIX-17: Renamed importAttZip→importAttCsv to match actual CSV functionality.
   function importAttCsv() {
-    // FIX-17: Read from the renamed att-csv-file input.
     var file = document.getElementById('att-csv-file').files[0];
     if (!file) return;
-
-    // FIX-16: Use the dedicated att-imp-cls selector — no silent fallback to
-    // imp-cls or att-exp-cls which could silently import into the wrong class.
     var cn = document.getElementById('att-imp-cls').value;
     if (!cn) { showToast('Select a class first', true); return; }
 
@@ -754,7 +760,7 @@
       .catch(function (e) { showToast(e.message, true); });
   }
 
-  /* ── SD health check ── */
+  /* ── SD health & operations ── */
   function checkSdHealth() {
     var badge = document.getElementById('sd-health-badge');
     if (!badge) return;
@@ -777,7 +783,6 @@
       });
   }
 
-  /* ── SD soft re-mount ── */
   function doSdRemount() {
     var btn = document.getElementById('sd-remount-btn');
     if (btn) btn.disabled = true;
@@ -791,7 +796,7 @@
       .finally(function () { if (btn) btn.disabled = false; });
   }
 
-  /* ── Backup list toggle & restore ── */
+  /* ── Backup list ── */
   var _backupListLoaded = false;
 
   function toggleBackupList() {
@@ -857,13 +862,7 @@
         showToast('Restoring from ' + filename + '…');
         api('/api/admin/restore-backup', 'POST', { filename: filename })
           .then(function () {
-            showToast('Restore successful \u2714 \u2014 page will reload');
-            // BUG-B FIX: Clear the classes and session caches before reloading.
-            // Without this, window.location.reload() serves the stale sessionStorage
-            // cache (which may still hold [] from when the SD card was down), so
-            // the restored data is never visible even though the server has it.
-            if (typeof invalidateClasses === 'function') invalidateClasses();
-            if (typeof invalidateSession === 'function') invalidateSession();
+            showToast('Restore successful ✔ — page will reload');
             setTimeout(function () { window.location.reload(); }, 1800);
           })
           .catch(function (e) {
@@ -887,7 +886,7 @@
     });
   }
 
-  /* ── System Restart (was ESP32 Reboot) ── */
+  /* ── System Restart ── */
   function doReboot() {
     confirmAction('Restart the ESP32-S3? The device will be offline for ~5 seconds.', function () {
       api('/api/admin/reboot', 'POST', {}).then(function () {
@@ -896,13 +895,12 @@
     });
   }
 
-  /* ── Appearance — font as dropdown ── */
+  /* ── Appearance ── */
   function initAppearanceUI() {
     var cfg     = getAppearance();
     var sel     = document.getElementById('font-select');
     var curFont = cfg.font || 'jetbrains';
 
-    /* Build font dropdown options */
     Object.keys(FONTS).forEach(function (key) {
       var f   = FONTS[key];
       var opt = document.createElement('option');
@@ -966,8 +964,6 @@
   }
   function doResetAll() {
     confirmAction('Reset ALL attendance data for every class? This cannot be undone.', function () {
-      // FIX-15: Pass 'POST' explicitly — api() defaulted to GET, making this
-      // endpoint cacheable and CSRF-vulnerable. Must match FIX-22 server-side.
       api('/api/admin/reset-all', 'POST', {})
         .then(function () { showToast('All reset'); })
         .catch(function (e) { showToast(e.message, true); });

@@ -153,7 +153,7 @@
           .then(function (stats) {
             var present = stats.present != null ? stats.present : 0;
             var absent  = stats.absent  != null ? stats.absent  : 0;
-            var t       = item.total != null ? item.total : (present + absent);
+            var t       = stats.total   != null ? stats.total   : (present + absent);
             item.card.innerHTML = renderCard(item.cn, t, present, absent);
           })
           .catch(function () {})

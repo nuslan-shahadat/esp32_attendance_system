@@ -454,6 +454,11 @@ window.apiStreamAttendance = function (url, onHeader, onTodayItem, onLogGroup, o
                 pos = -1;
                 objStart = -1;
               }
+            } else if (c === ']' && depth === 0) {
+              /* End of log array (handles empty [] and normal close) */
+              buf = buf.slice(pos + 1);
+              phase = 'done';
+              break;
             }
             pos++;
           }

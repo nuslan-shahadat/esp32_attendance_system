@@ -609,7 +609,7 @@ char *db_attendance_json(int class_num)
                 "       a.entry_time, a.status"
                 " FROM students s"
                 " LEFT JOIN attendance a"
-                "   ON s.card_uid=a.card_uid AND a.entry_date=?"
+                "   ON s.card_uid=a.card_uid AND a.class_num=s.class_num AND a.entry_date=?"
                 " WHERE s.class_num=? AND s.is_active=1"
                 " ORDER BY s.name",
                 -1, &s, NULL) == SQLITE_OK) {
