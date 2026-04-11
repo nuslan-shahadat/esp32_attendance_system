@@ -114,6 +114,52 @@
       .import-export-pair { flex-direction: column; }
     }
 
+    /* ── Color theme swatches ── */
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+      gap: .55rem;
+      margin-bottom: .5rem;
+    }
+    .theme-swatch {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .35rem;
+      padding: .55rem .4rem .5rem;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, transform .1s;
+      background: var(--stat-bg);
+      user-select: none;
+    }
+    .theme-swatch:hover { border-color: var(--accent); background: var(--accent-dim); transform: translateY(-1px); }
+    .theme-swatch.selected { border-color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 0 2px var(--accent); }
+    .theme-dot {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.18);
+      flex-shrink: 0;
+    }
+    .theme-swatch-name {
+      font-size: .6rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.2;
+    }
+    .theme-swatch.selected .theme-swatch-name { color: var(--accent); }
+    /* Custom color pickers — only shown when custom theme selected */
+    #custom-color-section {
+      margin-top: .75rem;
+      padding: .75rem .85rem;
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: 5px;
+    }
+
     /* ── Upload Progress Modal ── */
     .upload-modal-bg {
       display: none; position: fixed; inset: 0; z-index: 9999;
@@ -367,17 +413,22 @@
           </div>
         </div>
 
-        <!-- Accent Color -->
+        <!-- Color Theme -->
         <div style="margin-bottom:1.1rem">
-          <div style="font-size:.72rem;color:var(--text);margin-bottom:.6rem;font-weight:bold">Accent Color</div>
-          <div class="color-pair">
-            <div class="color-row">
-              <label>Dark Mode</label>
-              <input type="color" id="accent-dark" value="#00c896" oninput="previewAccent()">
-            </div>
-            <div class="color-row">
-              <label>Light Mode</label>
-              <input type="color" id="accent-light" value="#009973" oninput="previewAccent()">
+          <div style="font-size:.72rem;color:var(--text);margin-bottom:.65rem;font-weight:bold">Color Theme</div>
+          <div class="theme-grid" id="theme-grid"><!-- filled by initAppearanceUI --></div>
+          <!-- Custom pickers: only visible when "custom" theme is selected -->
+          <div id="custom-color-section" style="display:none">
+            <div style="font-size:.68rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.6rem">Custom Accent Color</div>
+            <div class="color-pair">
+              <div class="color-row">
+                <label>Dark Mode</label>
+                <input type="color" id="accent-dark" value="#00c896" oninput="previewCustomAccent()">
+              </div>
+              <div class="color-row">
+                <label>Light Mode</label>
+                <input type="color" id="accent-light" value="#009973" oninput="previewCustomAccent()">
+              </div>
             </div>
           </div>
         </div>
@@ -897,10 +948,12 @@
 
   /* ── Appearance ── */
   function initAppearanceUI() {
-    var cfg     = getAppearance();
-    var sel     = document.getElementById('font-select');
-    var curFont = cfg.font || 'jetbrains';
+    var cfg      = getAppearance();
+    var sel      = document.getElementById('font-select');
+    var curFont  = cfg.font || 'default';
+    var curTheme = cfg.colorTheme || 'green';
 
+    /* Font dropdown */
     Object.keys(FONTS).forEach(function (key) {
       var f   = FONTS[key];
       var opt = document.createElement('option');
@@ -910,12 +963,79 @@
       sel.appendChild(opt);
     });
 
+    /* Font size */
     if (cfg.fontSize) {
       document.getElementById('font-size-range').value = cfg.fontSize;
       document.getElementById('font-size-val').textContent = cfg.fontSize + 'px';
     }
+
+    /* Custom color values */
     if (cfg.accentDark)  document.getElementById('accent-dark').value  = cfg.accentDark;
     if (cfg.accentLight) document.getElementById('accent-light').value = cfg.accentLight;
+
+    /* Theme swatches */
+    buildThemeGrid(curTheme);
+  }
+
+  function buildThemeGrid(selectedKey) {
+    var isDark = !document.body.classList.contains('light');
+    var grid   = document.getElementById('theme-grid');
+    grid.innerHTML = '';
+
+    Object.keys(THEMES).forEach(function (key) {
+      var t    = THEMES[key];
+      var card = document.createElement('div');
+      card.className = 'theme-swatch' + (key === selectedKey ? ' selected' : '');
+      card.dataset.key = key;
+
+      if (key === 'custom') {
+        /* Custom swatch shows a split gradient of the saved custom colors */
+        var cfg = getAppearance();
+        var dk  = cfg.accentDark  || '#00c896';
+        var lt  = cfg.accentLight || '#009973';
+        card.innerHTML =
+          '<div class="theme-dot" style="background:linear-gradient(135deg,' + dk + ' 50%,' + lt + ' 50%);border-color:rgba(255,255,255,.25)"></div>' +
+          '<span class="theme-swatch-name">Custom ✎</span>';
+      } else {
+        var col = isDark ? t.dark : t.light;
+        card.innerHTML =
+          '<div class="theme-dot" style="background:' + col + '"></div>' +
+          '<span class="theme-swatch-name">' + t.name + '</span>';
+      }
+
+      card.addEventListener('click', function () {
+        selectTheme(key);
+      });
+      grid.appendChild(card);
+    });
+
+    /* Show/hide custom pickers */
+    document.getElementById('custom-color-section').style.display =
+      selectedKey === 'custom' ? 'block' : 'none';
+  }
+
+  /* Called when user clicks a theme swatch */
+  function selectTheme(key) {
+    /* Update selected state on cards */
+    document.querySelectorAll('.theme-swatch').forEach(function (el) {
+      el.classList.toggle('selected', el.dataset.key === key);
+    });
+    document.getElementById('custom-color-section').style.display =
+      key === 'custom' ? 'block' : 'none';
+
+    /* Live-preview the accent color */
+    var isDark = !document.body.classList.contains('light');
+    if (key === 'custom') {
+      var dk = document.getElementById('accent-dark').value;
+      var lt = document.getElementById('accent-light').value;
+      applyAccent(isDark ? dk : lt);
+    } else {
+      var t = THEMES[key];
+      if (t) applyAccent(isDark ? t.dark : t.light);
+    }
+
+    /* Remember active swatch key for save */
+    document.getElementById('theme-grid').dataset.selected = key;
   }
 
   function previewFont(key) {
@@ -927,20 +1047,25 @@
     document.documentElement.style.setProperty('--font-size-base', v + 'px');
   }
 
-  function previewAccent() {
+  function previewCustomAccent() {
     var isDark = !document.body.classList.contains('light');
     var col = isDark
       ? document.getElementById('accent-dark').value
       : document.getElementById('accent-light').value;
-    document.documentElement.style.setProperty('--accent', col);
+    applyAccent(col);
   }
 
   function saveAppearanceSettings() {
-    var fontKey  = document.getElementById('font-select').value;
-    var fontSize = document.getElementById('font-size-range').value;
+    var fontKey    = document.getElementById('font-select').value;
+    var fontSize   = document.getElementById('font-size-range').value;
+    var grid       = document.getElementById('theme-grid');
+    var themeKey   = grid.dataset.selected ||
+                     (document.querySelector('.theme-swatch.selected') || {}).dataset && 
+                     document.querySelector('.theme-swatch.selected').dataset.key || 'green';
     var cfg = {
       font:        fontKey,
       fontSize:    parseInt(fontSize),
+      colorTheme:  themeKey,
       accentDark:  document.getElementById('accent-dark').value,
       accentLight: document.getElementById('accent-light').value
     };

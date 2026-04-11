@@ -28,8 +28,6 @@
 // ── Font / Color Customization ─────────────────────────────────────
 (function () {
   // System-only font stacks — no external network requests (safe in AP mode)
-  // FIX-02: Each entry now has a genuinely distinct font stack instead of
-  // all resolving to the same Courier New fallback.
   const FONTS = {
     'default':    { name: 'Default Mono',   stack: "'Courier New', Courier, monospace" },
     'consolas':   { name: 'Consolas',       stack: "Consolas, 'Courier New', monospace" },
@@ -40,17 +38,67 @@
   };
   window.FONTS = FONTS;
 
-  function applyAppearance(cfg) {
+  // ── Pre-built color themes ──────────────────────────────────────
+  // Each theme defines accent colors for dark and light mode.
+  // 'custom' is a placeholder — its colors come from the user's pickers.
+  const THEMES = {
+    'green':  { name: 'Green',  dark: '#00c896', light: '#009973' },
+    'blue':   { name: 'Blue',   dark: '#4d9eff', light: '#1a7fe8' },
+    'yellow': { name: 'Yellow', dark: '#f5c842', light: '#c49000' },
+    'purple': { name: 'Purple', dark: '#a78bfa', light: '#7c3aed' },
+    'orange': { name: 'Orange', dark: '#fb923c', light: '#d96600' },
+    'red':    { name: 'Red',    dark: '#ff6b6b', light: '#c93030' },
+    'custom': { name: 'Custom', dark: null,      light: null      },
+  };
+  window.THEMES = THEMES;
+
+  // ── Color helpers ───────────────────────────────────────────────
+  function hexToRgb(hex) {
+    var r = parseInt(hex.slice(1,3), 16);
+    var g = parseInt(hex.slice(3,5), 16);
+    var b = parseInt(hex.slice(5,7), 16);
+    return [r, g, b];
+  }
+  function lightenHex(hex, amt) {
+    var rgb = hexToRgb(hex);
+    return '#' + rgb.map(function(v) {
+      return ('0' + Math.min(255, v + amt).toString(16)).slice(-2);
+    }).join('');
+  }
+  function applyAccent(hex) {
+    if (!hex || hex.length < 4) return;
     var root = document.documentElement;
-    var font = FONTS[cfg.font] || FONTS['default'];
+    var rgb  = hexToRgb(hex);
+    root.style.setProperty('--accent',     hex);
+    root.style.setProperty('--accent-h',   lightenHex(hex, 28));
+    root.style.setProperty('--accent-dim', 'rgba(' + rgb + ',.08)');
+    root.style.setProperty('--row-hover',  'rgba(' + rgb + ',.04)');
+  }
+  window.applyAccent = applyAccent;
+
+  function applyAppearance(cfg) {
+    var root  = document.documentElement;
+    var font  = FONTS[cfg.font] || FONTS['default'];
     root.style.setProperty('--font', font.stack);
     if (cfg.fontSize) root.style.setProperty('--font-size-base', cfg.fontSize + 'px');
+
+    // Resolve the accent hex for the current light/dark mode
+    var isDark   = !document.body.classList.contains('light');
+    var themeKey = cfg.colorTheme || 'green';
+    var theme    = THEMES[themeKey];
+    var hex;
+    if (themeKey === 'custom' || !theme || !theme.dark) {
+      hex = isDark ? (cfg.accentDark || '#00c896') : (cfg.accentLight || '#009973');
+    } else {
+      hex = isDark ? theme.dark : theme.light;
+    }
+    applyAccent(hex);
   }
 
   function loadAppearance() {
     try {
       var cfg = JSON.parse(localStorage.getItem('att_appearance') || '{}');
-      if (cfg.font || cfg.fontSize) applyAppearance(cfg);
+      applyAppearance(cfg);
     } catch (e) {}
   }
 
@@ -65,9 +113,7 @@
   loadAppearance();
   var _origToggle = window.toggleTheme;
   window.toggleTheme = function () { _origToggle(); loadAppearance(); };
-})();
-
-// ── Debounce utility ────────────────────────────────────────────────
+})();// ── Debounce utility ────────────────────────────────────────────────
 window.debounce = function(fn, delay) {
   var timer;
   return function() {
