@@ -168,16 +168,70 @@
     .upload-modal-bg.show { display: flex; }
     .upload-modal {
       background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-      padding: 2rem 2.5rem; min-width: 220px; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,.4);
+      padding: 1.75rem 2.25rem; min-width: 300px; max-width: 360px;
+      width: 90vw; text-align: left; box-shadow: 0 8px 40px rgba(0,0,0,.4);
     }
-    .upload-ring {
-      width: 56px; height: 56px; margin: 0 auto .9rem;
-      border: 4px solid var(--border); border-top-color: var(--accent);
-      border-radius: 50%; animation: spin .75s linear infinite;
+
+    /* Phase label row */
+    .upm-phase {
+      font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 1rem;
+      display: flex; align-items: center; gap: .55rem;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    .upload-label { font-size: .78rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
-    .upload-sublabel { font-size: .68rem; color: var(--dim); margin-top: .3rem; }
+    .upm-phase-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--accent); flex-shrink: 0;
+      animation: upmPulse 1.2s ease-in-out infinite;
+    }
+    @keyframes upmPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+    /* Four-segment track */
+    .upm-track-wrap { margin-bottom: .6rem; }
+    .upm-track {
+      width: 100%; height: 7px; background: var(--border);
+      border-radius: 4px; position: relative; overflow: visible;
+    }
+    /* Each bar segment occupies 25% of total width */
+    .upm-bar-read   { position: absolute; left:  0%;  top: 0; bottom: 0; border-radius: 4px 0 0 4px; background: var(--accent); opacity: .5;  transition: width .35s ease; width: 0%; max-width: 25%; overflow: hidden; }
+    .upm-bar-upload { position: absolute; left: 25%;  top: 0; bottom: 0;                              background: var(--accent); opacity: .7;  transition: width .4s cubic-bezier(.4,0,.2,1); width: 0%; max-width: 25%; overflow: hidden; }
+    .upm-bar-proc   { position: absolute; left: 50%;  top: 0; bottom: 0;                              background: var(--accent); opacity: .85; transition: width .4s linear; width: 0%; max-width: 25%; overflow: hidden; }
+    .upm-bar-final  { position: absolute; left: 75%;  top: 0; bottom: 0; border-radius: 0 4px 4px 0; background: var(--accent); opacity: 1;   transition: width .5s ease-out; width: 0%; max-width: 25%; overflow: hidden; }
+    /* Tick marks at 25%, 50%, 75% */
+    .upm-tick {
+      position: absolute; top: -2px; bottom: -2px;
+      width: 2px; background: var(--card); border-radius: 1px; z-index: 1;
+    }
+    .upm-tick-1 { left: 25%; }
+    .upm-tick-2 { left: 50%; }
+    .upm-tick-3 { left: 75%; }
+
+    /* Pct + ETA row */
+    .upm-meta {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: .65rem; color: var(--muted); margin-bottom: .7rem;
+    }
+    .upm-pct { color: var(--text); font-weight: bold; min-width: 36px; }
+    .upm-eta { color: var(--accent); letter-spacing: .04em; }
+
+    /* Four phase label row */
+    .upm-phases-row {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      font-size: .56rem; letter-spacing: .07em; text-transform: uppercase;
+      color: var(--dim); margin-bottom: 1rem; gap: 2px;
+    }
+    .upm-phases-row span { text-align: center; padding: .18rem .1rem; border-radius: 3px; transition: color .2s, background .2s; }
+    .upm-phases-row span.active-phase  { color: var(--accent); background: var(--accent-dim); font-weight: bold; }
+    .upm-phases-row span.done-phase    { color: var(--muted); }
+
+    /* Record count */
+    .upm-records {
+      font-size: .68rem; color: var(--muted);
+      border-top: 1px solid var(--border);
+      padding-top: .65rem;
+      display: flex; gap: .4rem; align-items: center;
+    }
+    .upm-records-val { color: var(--text); font-weight: bold; }
+    .upm-warn { font-size: .62rem; color: var(--dim); margin-top: .35rem; }
   </style>
 </head>
 <body>
@@ -529,9 +583,47 @@
 <!-- Upload Progress Modal -->
 <div class="upload-modal-bg" id="upload-progress-modal">
   <div class="upload-modal">
-    <div class="upload-ring"></div>
-    <div class="upload-label" id="upload-progress-label">Uploading…</div>
-    <div class="upload-sublabel" id="upload-progress-sub">Please wait, do not close this page</div>
+
+    <!-- Phase label -->
+    <div class="upm-phase">
+      <div class="upm-phase-dot" id="upm-dot"></div>
+      <span id="upm-phase-label">Uploading…</span>
+    </div>
+
+    <!-- Four-segment progress bar -->
+    <div class="upm-track-wrap">
+      <div class="upm-track">
+        <div class="upm-bar-read"   id="upm-bar-read"></div>
+        <div class="upm-bar-upload" id="upm-bar-upload"></div>
+        <div class="upm-bar-proc"   id="upm-bar-proc"></div>
+        <div class="upm-bar-final"  id="upm-bar-final"></div>
+        <div class="upm-tick upm-tick-1"></div>
+        <div class="upm-tick upm-tick-2"></div>
+        <div class="upm-tick upm-tick-3"></div>
+      </div>
+    </div>
+
+    <!-- Pct + ETA -->
+    <div class="upm-meta">
+      <span class="upm-pct" id="upm-pct">0%</span>
+      <span class="upm-eta" id="upm-eta">Starting…</span>
+    </div>
+
+    <!-- Four phase labels -->
+    <div class="upm-phases-row">
+      <span id="upm-lbl-read"   class="active-phase">① Reading</span>
+      <span id="upm-lbl-upload">② Uploading</span>
+      <span id="upm-lbl-proc"  >③ Processing</span>
+      <span id="upm-lbl-final" >④ Finalizing</span>
+    </div>
+
+    <!-- Record info -->
+    <div class="upm-records">
+      <span>Records:</span>
+      <span class="upm-records-val" id="upm-records">—</span>
+    </div>
+    <div class="upm-warn">Do not close or refresh this page</div>
+
   </div>
 </div>
 
@@ -726,48 +818,234 @@
     window.open('/api/admin/export-all-zip', '_blank');
   }
 
-  /* ── Import CSV (refactored — now dedicated to students) ── */
-  function showUploadProgress(label, sub) {
-    document.getElementById('upload-progress-label').textContent = label || 'Uploading…';
-    document.getElementById('upload-progress-sub').textContent   = sub   || 'Please wait, do not close this page';
+  /* ── Import progress modal — 4-phase engine ────────────────────
+   *
+   * Phase 1 ① Reading   (  0–25%): FileReader.onprogress (real bytes read)
+   * Phase 2 ② Uploading ( 25–50%): XHR upload.onprogress (real bytes sent)
+   * Phase 3 ③ Processing( 50–75%): Estimated countdown (recCount × 40 ms)
+   * Phase 4 ④ Finalizing( 75–100%): Brief fill while waiting for response
+   * ──────────────────────────────────────────────────────────── */
+  var _procTimer  = null;   /* setInterval handle — processing countdown  */
+  var _finalTimer = null;   /* setInterval handle — finalizing fill        */
+
+  /* ── Helpers ── */
+  function _showImportModal() {
     document.getElementById('upload-progress-modal').classList.add('show');
   }
   function hideUploadProgress() {
     document.getElementById('upload-progress-modal').classList.remove('show');
+    if (_procTimer)  { clearInterval(_procTimer);  _procTimer  = null; }
+    if (_finalTimer) { clearInterval(_finalTimer); _finalTimer = null; }
+  }
+  /* Shim: importAttCsv() calls this with just a label string */
+  function showUploadProgress(label) {
+    _upmReset();
+    _upmSetPhase('upload');
+    document.getElementById('upm-phase-label').textContent = label || 'Uploading…';
+    _showImportModal();
   }
 
+  function _fmtEta(sec) {
+    if (sec < 1)  return '< 1s';
+    if (sec < 60) return Math.ceil(sec) + 's';
+    var m = Math.floor(sec / 60), s = Math.ceil(sec % 60);
+    return m + 'm ' + (s < 10 ? '0' : '') + s + 's';
+  }
+
+  /* Zero out all four bar segments and labels */
+  function _upmReset() {
+    ['read','upload','proc','final'].forEach(function(k) {
+      document.getElementById('upm-bar-' + k).style.width = '0%';
+    });
+    document.getElementById('upm-pct').textContent = '0%';
+    document.getElementById('upm-eta').textContent = 'Starting…';
+    document.getElementById('upm-records').textContent = '—';
+    ['read','upload','proc','final'].forEach(function(k) {
+      var el = document.getElementById('upm-lbl-' + k);
+      el.classList.remove('active-phase','done-phase');
+    });
+  }
+
+  /* Activate one phase label, mark prior ones as done */
+  var _PHASE_ORDER = ['read','upload','proc','final'];
+  function _upmSetPhase(phase) {
+    var idx = _PHASE_ORDER.indexOf(phase);
+    _PHASE_ORDER.forEach(function(k, i) {
+      var el = document.getElementById('upm-lbl-' + k);
+      el.classList.remove('active-phase','done-phase');
+      if (i < idx)  el.classList.add('done-phase');
+      if (i === idx) el.classList.add('active-phase');
+    });
+    document.getElementById('upm-phase-label').textContent = {
+      read:   'Reading file…',
+      upload: 'Uploading to device…',
+      proc:   'Processing on device…',
+      final:  'Finalizing…'
+    }[phase] || '';
+  }
+
+  /* Set overall pct (0–100) and derive which bar segment to fill */
+  function _upmSetPct(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    document.getElementById('upm-pct').textContent = Math.round(pct) + '%';
+    /* Each phase owns a 25% window; fill = how far into that window */
+    var segs = ['read','upload','proc','final'];
+    segs.forEach(function(k, i) {
+      var start = i * 25, end = start + 25;
+      var fill = pct <= start ? 0
+               : pct >= end   ? 25
+               : pct - start;
+      document.getElementById('upm-bar-' + k).style.width = fill + '%';
+    });
+  }
+
+  /* ── importCsv: four-phase import with live ETA ──────────────── */
   function importCsv() {
     var file = document.getElementById('csv-file').files[0];
     if (!file) return;
-    var cn   = document.getElementById('imp-cls').value;
+    var cn = document.getElementById('imp-cls').value;
     if (!cn) { showToast('Select class first', true); return; }
 
-    var type = 'students';   // Now dedicated — no more type selector
+    /* Estimated times (ms) per phase after reading */
+    var MS_PER_REC  = 40;   /* ESP32 SQLite INSERT — ~25 rec/sec conservative */
+    var FINAL_MS    = 900;  /* Finalizing: brief server wrap-up               */
 
-    var reader = new FileReader();
-    reader.onload = function (e) {
-      var csvText = e.target.result;
-      var lineCount = (csvText.match(/\n/g) || []).length;
-      showUploadProgress(
-        'Importing ' + type + '…',
-        'Processing ~' + Math.max(0, lineCount - 1) + ' records'
-      );
-      fetch('/api/admin/import-csv?classnum=' + cn + '&type=' + type, {
-        method:  'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body:    csvText
-      })
-      .then(function (r) {
-        hideUploadProgress();
-        if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || 'Import failed'); });
-        return r.json();
-      })
-      .then(function (r) {
-        showToast('Imported: ' + (r.added||0) + ' added, ' + (r.skipped||0) + ' skipped');
-        document.getElementById('csv-file').value = '';
-      })
-      .catch(function (e) { hideUploadProgress(); showToast(e.message, true); });
+    /* ── Phase 1: Reading ── open modal immediately */
+    _upmReset();
+    _upmSetPhase('read');
+    _showImportModal();
+
+    var reader    = new FileReader();
+    var readStart = Date.now();
+
+    reader.onprogress = function (ev) {
+      if (!ev.lengthComputable) return;
+      var frac = ev.loaded / ev.total;
+      /* Reading fills 0–25% */
+      _upmSetPct(frac * 25);
+      var elapsed = (Date.now() - readStart) / 1000;
+      if (elapsed > 0.1 && frac > 0) {
+        var remRead = ((1 - frac) / frac) * elapsed;
+        document.getElementById('upm-eta').textContent = 'Est. ' + _fmtEta(remRead) + ' left';
+      }
     };
+
+    reader.onload = function (ev) {
+      var csvText  = ev.target.result;
+      var recCount = Math.max(0, (csvText.match(/\n/g) || []).length - 1);
+      var procMs   = recCount * MS_PER_REC;
+
+      document.getElementById('upm-records').textContent = recCount;
+
+      /* Snap reading bar to 25% (complete) */
+      _upmSetPct(25);
+
+      /* ── Phase 2: Uploading ── */
+      _upmSetPhase('upload');
+
+      var xhr        = new XMLHttpRequest();
+      var uploadStart = Date.now();
+      var url        = '/api/admin/import-csv?classnum=' + cn + '&type=students';
+
+      xhr.upload.addEventListener('progress', function (ev2) {
+        if (!ev2.lengthComputable) return;
+        var frac    = ev2.loaded / ev2.total;
+        var elapsed = (Date.now() - uploadStart) / 1000;
+
+        /* Upload fills 25–50% */
+        _upmSetPct(25 + frac * 25);
+
+        if (elapsed > 0.3 && frac > 0) {
+          var rate     = ev2.loaded / elapsed;
+          var remUp    = (ev2.total - ev2.loaded) / rate;
+          var totalEta = remUp + procMs / 1000 + FINAL_MS / 1000;
+          document.getElementById('upm-eta').textContent = 'Est. ' + _fmtEta(totalEta) + ' left';
+        }
+      });
+
+      xhr.upload.addEventListener('load', function () {
+        /* Upload done — snap to 50% */
+        _upmSetPct(50);
+
+        /* ── Phase 3: Processing ── */
+        _upmSetPhase('proc');
+
+        if (recCount === 0) {
+          document.getElementById('upm-eta').textContent = '—';
+          return;
+        }
+
+        var procStart = Date.now();
+        document.getElementById('upm-eta').textContent = 'Est. ' + _fmtEta((procMs + FINAL_MS) / 1000) + ' left';
+
+        _procTimer = setInterval(function () {
+          var elapsed = Date.now() - procStart;
+          var frac    = Math.min(elapsed / procMs, 1);
+
+          /* Processing fills 50–75% */
+          _upmSetPct(50 + frac * 25);
+
+          var remProc = Math.max(0, (procMs - elapsed) / 1000);
+          var totalRem = remProc + FINAL_MS / 1000;
+          document.getElementById('upm-eta').textContent =
+            totalRem < 0.5 ? 'Almost done…' : 'Est. ' + _fmtEta(totalRem) + ' left';
+
+          if (frac >= 1) {
+            clearInterval(_procTimer); _procTimer = null;
+            /* ── Phase 4: Finalizing ── */
+            _upmSetPhase('final');
+            var finalStart = Date.now();
+            document.getElementById('upm-eta').textContent = 'Est. ' + _fmtEta(FINAL_MS / 1000) + ' left';
+            _finalTimer = setInterval(function () {
+              var fe   = Date.now() - finalStart;
+              var ffrac = Math.min(fe / FINAL_MS, 0.92);  /* cap at 92% — xhr.onload finishes it */
+              _upmSetPct(75 + ffrac * 25);
+              var rem = Math.max(0, (FINAL_MS - fe) / 1000);
+              document.getElementById('upm-eta').textContent =
+                rem < 0.3 ? 'Finishing…' : 'Est. ' + _fmtEta(rem) + ' left';
+            }, 120);
+          }
+        }, 200);
+      });
+
+      xhr.onload = function () {
+        if (_procTimer)  { clearInterval(_procTimer);  _procTimer  = null; }
+        if (_finalTimer) { clearInterval(_finalTimer); _finalTimer = null; }
+
+        /* Snap to 100% briefly before closing */
+        _upmSetPhase('final');
+        _upmSetPct(100);
+        document.getElementById('upm-eta').textContent = 'Done ✓';
+
+        setTimeout(function () {
+          hideUploadProgress();
+          if (xhr.status < 200 || xhr.status >= 300) {
+            try {
+              var j = JSON.parse(xhr.responseText);
+              showToast(j.error || 'Import failed', true);
+            } catch (_) { showToast('Import failed (' + xhr.status + ')', true); }
+            return;
+          }
+          try {
+            var r = JSON.parse(xhr.responseText);
+            showToast('Imported: ' + (r.added||0) + ' added, ' + (r.skipped||0) + ' skipped');
+          } catch (_) { showToast('Import complete'); }
+          document.getElementById('csv-file').value = '';
+        }, 400);
+      };
+
+      xhr.onerror = function () {
+        if (_procTimer)  { clearInterval(_procTimer);  _procTimer  = null; }
+        if (_finalTimer) { clearInterval(_finalTimer); _finalTimer = null; }
+        hideUploadProgress();
+        showToast('Network error during import', true);
+      };
+
+      xhr.open('POST', url);
+      xhr.setRequestHeader('Content-Type', 'text/plain');
+      xhr.send(csvText);
+    };
+
     reader.readAsText(file);
   }
 
