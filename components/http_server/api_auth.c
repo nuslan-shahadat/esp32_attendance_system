@@ -1,5 +1,6 @@
 #include "http_server.h"
 #include "auth.h"
+#include "db.h"
 #include "esp_log.h"
 #include "cJSON.h"
 #include <string.h>
@@ -35,6 +36,15 @@ esp_err_t api_login_post(httpd_req_t *req)
         httpd_resp_set_hdr(req, "Set-Cookie", cookie);
 
         ESP_LOGI(TAG, "Login OK");
+
+        /* Re-mount SD card on every login so the DB is fresh (same as
+           the admin-panel "Re-mount SD" button).  Non-fatal: if the
+           remount fails we still complete the login and let the user
+           retry manually from the admin panel. */
+        int rm_rc = db_sd_remount();
+        if (rm_rc != ESP_OK)
+            ESP_LOGW(TAG, "Post-login SD remount failed (rc=%d) — continuing", rm_rc);
+
         ret = http_send_json(req, 200, "{\"ok\":true}");
     } else {
         ESP_LOGW(TAG, "Login failed — wrong password");
