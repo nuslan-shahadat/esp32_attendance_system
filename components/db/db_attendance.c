@@ -349,7 +349,7 @@ esp_err_t db_report_stream_json(int class_num, const char *month_prefix,
     if (ret != ESP_OK) { db_unlock(); db_streaming_end(); return ret; }
 
     /* Stream each student row one by one */
-    if (class_days > 0) {
+    {
         sqlite3_stmt *s;
         if (sqlite3_prepare_v2(db,
                 "SELECT s.card_uid, s.name, s.roll, s.batchtime,"
@@ -749,7 +749,7 @@ char *db_report_json(int class_num, const char *month_prefix, int min_att_pct)
     sb_appendf(&sb, "{\"class_days\":%d,\"min_pct\":%d,\"rows\":[",
                class_days, min_att_pct);
 
-    if (class_days > 0) {
+    {
         sqlite3_stmt *s;
         if (sqlite3_prepare_v2(db,
                 "SELECT s.card_uid,s.name,s.roll,s.batchtime,"

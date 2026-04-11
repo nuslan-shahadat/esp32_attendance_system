@@ -174,8 +174,8 @@ char *db_students_list_json(int class_num, int include_archived, int min_att_pct
                     sess = sqlite3_column_int(cnt, 0);
             }
 
-            int att_pct = (total_days > 0) ? (sess * 100 / total_days) : 100;
-            bool low_att = (total_days > 0 && att_pct < min_att_pct);
+            int att_pct = (total_days > 0) ? (sess * 100 / total_days) : 0;
+            bool low_att = (att_pct < min_att_pct);
 
             if (!first) sb_append(&sb, ",");
             first = false;
@@ -486,8 +486,8 @@ esp_err_t db_students_stream_json(int class_num, int include_archived, int min_a
                     sess = sqlite3_column_int(cnt, 0);
             }
 
-            int att_pct  = (total_days > 0) ? (sess * 100 / total_days) : 100;
-            bool low_att = (total_days > 0 && att_pct < min_att_pct);
+            int att_pct  = (total_days > 0) ? (sess * 100 / total_days) : 0;
+            bool low_att = (att_pct < min_att_pct);
 
             /* JSON-escape each field into its own small fixed buffer */
             json_escape(uid       ? uid       : "", esc_uid,   sizeof(esc_uid));

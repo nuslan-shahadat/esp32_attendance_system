@@ -587,92 +587,171 @@ window.apiUpload = function (url, formData) {
   });
 };
 
-// ── Live status polling — NTP + RFID banners ───────────────────────
-// Polls /api/status every 30 s. Shows a banner for each problem and
-// auto-dismisses it as soon as the condition clears.  Polling stops
-// once both issues are resolved (or the page is navigated away).
+// ── Live status polling — NTP + RFID footer warnings ──────────────
+// Warnings appear as dismissible popups in the page footer.
+// Dismissed warnings are suppressed for the rest of the login session
+// (stored in sessionStorage). Auto-clears when the condition resolves.
 (function () {
   var _pollTimer = null;
+  var _rfidRetryTimer = null;
+  var _rfidRetrying = false;
+  var DISMISS_KEY = 'att_warn_dismissed_v1';
 
-  function _removeBanner(id) {
-    var el = document.getElementById(id);
-    if (el && el.parentNode) el.parentNode.removeChild(el);
+  // ── Dismissed set (per login session) ──────────────────────────
+  function _getDismissed() {
+    try { return JSON.parse(sessionStorage.getItem(DISMISS_KEY) || '{}'); } catch (e) { return {}; }
   }
+  function _setDismissed(id) {
+    var d = _getDismissed(); d[id] = true;
+    try { sessionStorage.setItem(DISMISS_KEY, JSON.stringify(d)); } catch (e) {}
+  }
+  function _isDismissed(id) { return !!_getDismissed()[id]; }
+  // On fresh login (invalidateSession is called), reset dismissals too
+  var _origInvalidate = window.invalidateSession;
+  window.invalidateSession = function () {
+    try { sessionStorage.removeItem(DISMISS_KEY); } catch (e) {}
+    if (_origInvalidate) _origInvalidate();
+  };
 
-  function _ensureBanner(id, html, bgColor) {
-    if (document.getElementById(id)) return;
-    var b = document.createElement('div');
-    b.id = id;
-    b.style.cssText =
-      'position:fixed;top:0;left:0;right:0;z-index:9999;' +
-      'background:' + bgColor + ';color:#fff;font-size:.72rem;' +
-      'letter-spacing:.06em;text-align:center;padding:.45rem .75rem;' +
-      'display:flex;align-items:center;justify-content:center;gap:.6rem;';
-    b.innerHTML = html;
-    // Stack below any banner already present
-    var existing = document.querySelector('[id$="-warning-banner"]');
-    if (existing && existing.nextSibling) {
-      document.body.insertBefore(b, existing.nextSibling);
-    } else {
-      document.body.insertBefore(b, document.body.firstChild);
+  // ── Warning tray (footer) ───────────────────────────────────────
+  function _getTray() {
+    var tray = document.getElementById('_warn-tray');
+    if (!tray) {
+      tray = document.createElement('div');
+      tray.id = '_warn-tray';
+      tray.style.cssText =
+        'position:fixed;bottom:0;left:0;right:0;z-index:9999;' +
+        'display:flex;flex-direction:column;gap:0;pointer-events:none;';
+      document.body.appendChild(tray);
     }
+    return tray;
   }
 
-  function _rfidReconnectBtn() {
-    return '<button onclick="window._rfidReconnect()" style="' +
-      'background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.5);' +
-      'color:#fff;border-radius:4px;padding:.2rem .55rem;font-size:.68rem;' +
-      'cursor:pointer;letter-spacing:.05em;">Reconnect</button>';
+  function _removePopup(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.transform = 'translateY(100%)';
+    el.style.opacity = '0';
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 280);
   }
 
-  window._rfidReconnect = function () {
-    var btn = document.querySelector('#rfid-warning-banner button');
-    if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  function _ensurePopup(id, iconHtml, msgHtml, accentColor, actionHtml) {
+    if (document.getElementById(id)) return;
+    if (_isDismissed(id)) return;
+
+    var popup = document.createElement('div');
+    popup.id = id;
+    popup.style.cssText =
+      'pointer-events:all;' +
+      'background:var(--card,#1a1d27);' +
+      'border-top:2px solid ' + accentColor + ';' +
+      'color:var(--text,#e0e6f0);' +
+      'font-size:.73rem;letter-spacing:.04em;' +
+      'padding:.6rem 1rem;' +
+      'display:flex;align-items:center;gap:.7rem;' +
+      'box-shadow:0 -4px 24px rgba(0,0,0,.45);' +
+      'transform:translateY(100%);opacity:0;' +
+      'transition:transform .28s cubic-bezier(.4,0,.2,1),opacity .28s;' +
+      'font-family:var(--font,"Courier New",monospace);';
+
+    popup.innerHTML =
+      '<span style="color:' + accentColor + ';font-size:.95rem;flex-shrink:0">' + iconHtml + '</span>' +
+      '<span style="flex:1;line-height:1.55">' + msgHtml + '</span>' +
+      (actionHtml ? '<span style="flex-shrink:0">' + actionHtml + '</span>' : '') +
+      '<button onclick="window._dismissWarning(\'' + id + '\')" title="Dismiss" style="' +
+        'background:none;border:none;color:var(--muted,#7a8299);font-size:1rem;' +
+        'cursor:pointer;padding:.1rem .3rem;line-height:1;flex-shrink:0;' +
+        'transition:color .15s;" onmouseover="this.style.color=\'var(--text,#e0e6f0)\'" ' +
+        'onmouseout="this.style.color=\'var(--muted,#7a8299)\'">✕</button>';
+
+    _getTray().appendChild(popup);
+    // Animate in
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        popup.style.transform = 'translateY(0)';
+        popup.style.opacity = '1';
+      });
+    });
+  }
+
+  window._dismissWarning = function (id) {
+    _setDismissed(id);
+    _removePopup(id);
+  };
+
+  // ── RFID reconnect with infinite retry loop ─────────────────────
+  function _rfidConnectBtn() {
+    return '<button id="_rfid-connect-btn" onclick="window._rfidStartRetry()" style="' +
+      'background:rgba(124,58,237,.18);border:1px solid rgba(124,58,237,.5);' +
+      'color:#a78bfa;border-radius:4px;padding:.22rem .65rem;font-size:.68rem;' +
+      'cursor:pointer;letter-spacing:.06em;font-family:inherit;transition:background .15s;">Connect</button>';
+  }
+
+  window._rfidStartRetry = function () {
+    if (_rfidRetrying) return;
+    _rfidRetrying = true;
+    var btn = document.getElementById('_rfid-connect-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Connecting…';
+      btn.style.opacity = '.7';
+    }
+    _rfidDoRetry();
+  };
+
+  function _rfidDoRetry() {
     api('/api/admin/rfid-reconnect', 'POST', {})
       .then(function (r) {
         if (r && r.connected) {
-          _removeBanner('rfid-warning-banner');
-          showToast('RFID reader reconnected ✔');
+          _rfidRetrying = false;
+          if (_rfidRetryTimer) { clearTimeout(_rfidRetryTimer); _rfidRetryTimer = null; }
+          _removePopup('rfid-warning-banner');
+          showToast('RFID reader connected ✔');
         } else {
-          showToast('RFID reader did not respond — try again', true);
-          if (btn) { btn.disabled = false; btn.textContent = 'Reconnect'; }
+          // Not connected yet — retry in 2 s
+          _rfidRetryTimer = setTimeout(_rfidDoRetry, 2000);
         }
       })
       .catch(function () {
-        showToast('Reconnect request failed', true);
-        if (btn) { btn.disabled = false; btn.textContent = 'Reconnect'; }
+        // Network hiccup — retry in 2 s
+        _rfidRetryTimer = setTimeout(_rfidDoRetry, 2000);
       });
-  };
+  }
 
+  // ── Apply status from /api/status ──────────────────────────────
   function _applyStatus(s) {
     if (!s) return;
 
-    // NTP banner
+    // NTP popup
     if (s.ntp_ok === false) {
-      _ensureBanner(
+      _ensurePopup(
         'ntp-warning-banner',
-        '\u26a0 Clock not synced \u2014 attendance timestamps may be incorrect. ' +
-        '<a href="/wifi-config.html" style="color:#fde68a;text-decoration:underline;">' +
-        'Connect to WiFi</a> to enable NTP sync.',
-        '#b45309'
+        '⏱',
+        'Clock not synced — timestamps may be incorrect. ' +
+        '<a href="/wifi-config.html" style="color:var(--warn,#e0a000);text-decoration:underline;">Connect to WiFi</a> to enable NTP.',
+        'var(--warn,#e0a000)',
+        ''
       );
     } else {
-      _removeBanner('ntp-warning-banner');
+      _removePopup('ntp-warning-banner');
     }
 
-    // RFID banner
+    // RFID popup
     if (s.rfid_ok === false) {
-      _ensureBanner(
+      _ensurePopup(
         'rfid-warning-banner',
-        '\u26a0 RFID reader not connected \u2014 card scanning is unavailable. ' +
-        _rfidReconnectBtn(),
-        '#7c3aed'
+        '📡',
+        'RFID reader not connected — card scanning unavailable.',
+        '#a78bfa',
+        _rfidConnectBtn()
       );
     } else {
-      _removeBanner('rfid-warning-banner');
+      _rfidRetrying = false;
+      if (_rfidRetryTimer) { clearTimeout(_rfidRetryTimer); _rfidRetryTimer = null; }
+      _removePopup('rfid-warning-banner');
     }
 
-    // Stop polling once everything is healthy
+    // Stop polling when everything is healthy
     var allOk = s.ntp_ok !== false && s.rfid_ok !== false;
     if (allOk && _pollTimer) {
       clearInterval(_pollTimer);
@@ -681,9 +760,7 @@ window.apiUpload = function (url, formData) {
   }
 
   window._startStatusPolling = function () {
-    // Immediate first check — bypass any cache
     api('/api/status').then(_applyStatus).catch(function () {});
-    // Then poll every 30 s
     if (_pollTimer) clearInterval(_pollTimer);
     _pollTimer = setInterval(function () {
       api('/api/status').then(_applyStatus).catch(function () {});

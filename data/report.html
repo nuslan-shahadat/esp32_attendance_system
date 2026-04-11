@@ -7,24 +7,157 @@
   <link rel="stylesheet" href="/shared.css">
   <style>
     .page-wrap { width: 100%; max-width: 980px; }
-    .controls { display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.5rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
-    .controls .field { margin: 0; }
-    .pct-cell  { min-width: 130px; }
-    .pct-num   { font-size: .82rem; font-weight: bold; margin-bottom: .22rem; }
-    tfoot td   { font-weight: bold; color: var(--accent); font-size: .76rem; letter-spacing: .07em; padding: .7rem .9rem; border-top: 2px solid var(--accent); }
-    .export-btn { margin-left: auto; }
-    #summary-bar { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
-    #summary-bar .sb { display: flex; flex-direction: column; gap: .2rem; }
-    #summary-bar .sv { font-size: 1.3rem; font-weight: bold; }
-    #summary-bar .sl { font-size: .59rem; color: var(--muted); letter-spacing: .13em; text-transform: uppercase; }
-    .loading-status { font-size: .75rem; color: var(--muted); margin-top: .5rem; }
+
+    /* ── Page header ─────────────────────────────────────────── */
+    .rp-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1.75rem;
+    }
+    .rp-title-block .rp-title { font-size: 1.1rem; font-weight: 700; color: var(--text); letter-spacing: .04em; }
+    .rp-title-block .rp-sub   { font-size: .65rem; color: var(--muted); letter-spacing: .12em; text-transform: uppercase; margin-top: .25rem; }
+
+    /* ── Controls bar ────────────────────────────────────────── */
+    .rp-controls {
+      display: flex;
+      align-items: flex-end;
+      gap: .75rem;
+      flex-wrap: wrap;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .rp-controls .field { margin: 0; flex-shrink: 0; }
+    .rp-controls .field label { font-size: .6rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); display: block; margin-bottom: .35rem; }
+    .rp-controls input[type="month"] {
+      background: var(--input-bg); border: 1px solid var(--border); border-radius: 5px;
+      padding: .5rem .75rem; color: var(--text); font-family: var(--font); font-size: .82rem;
+      outline: none; transition: border-color .2s, box-shadow .2s; letter-spacing: .04em;
+    }
+    .rp-controls input[type="month"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,200,150,.1); }
+    .rp-ctrl-spacer { flex: 1; }
+    .rp-actions { display: flex; align-items: center; gap: .6rem; flex-shrink: 0; }
+
+    /* ── Summary stat cards ──────────────────────────────────── */
+    .rp-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: .9rem;
+      margin-bottom: 1.5rem;
+    }
+    .rp-stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .rp-stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 2px;
+    }
+    .rp-stat-card.c-grey::before   { background: var(--border); }
+    .rp-stat-card.c-blue::before   { background: #60a5fa; }
+    .rp-stat-card.c-green::before  { background: var(--accent); }
+    .rp-stat-card.c-warn::before   { background: var(--warn); }
+    .rp-stat-val {
+      font-size: 1.8rem; font-weight: 800; line-height: 1;
+      letter-spacing: -.02em; margin-bottom: .4rem;
+    }
+    .rp-stat-card.c-grey  .rp-stat-val { color: var(--text); }
+    .rp-stat-card.c-blue  .rp-stat-val { color: #60a5fa; }
+    .rp-stat-card.c-green .rp-stat-val { color: var(--accent); }
+    .rp-stat-card.c-warn  .rp-stat-val { color: var(--warn); }
+    .rp-stat-lbl { font-size: .58rem; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    .rp-stat-icon { position: absolute; right: .9rem; top: .9rem; font-size: 1.1rem; opacity: .15; }
+
+    /* ── Table card ──────────────────────────────────────────── */
+    .rp-table-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .rp-table-head {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .85rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      gap: .75rem; flex-wrap: wrap;
+    }
+    .rp-table-head-title { font-size: .7rem; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+    .rp-table-wrap { overflow-x: auto; }
+
+    table#rep-table { width: 100%; border-collapse: collapse; }
+    table#rep-table thead th {
+      font-size: .6rem; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--muted); padding: .7rem 1rem; text-align: left;
+      border-bottom: 1px solid var(--border); background: var(--stat-bg);
+      white-space: nowrap;
+    }
+    table#rep-table thead th.num-col { width: 44px; text-align: center; }
+    table#rep-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background .12s;
+    }
+    table#rep-table tbody tr:last-child { border-bottom: none; }
+    table#rep-table tbody tr:hover { background: var(--row-hover); }
+    table#rep-table td {
+      padding: .75rem 1rem; font-size: .8rem; color: var(--text);
+      vertical-align: middle;
+    }
+    table#rep-table td.num-col { text-align: center; color: var(--muted); font-size: .72rem; }
+
+    /* Attendance % cell */
+    .pct-cell { min-width: 120px; }
+    .pct-num  { font-size: .82rem; font-weight: 700; margin-bottom: .28rem; }
+    .pct-bar-wrap { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .pct-bar      { height: 100%; border-radius: 2px; transition: width .6s; }
+    .pct-bar-green { background: var(--accent); }
+    .pct-bar-warn  { background: var(--warn); }
+    .pct-bar-red   { background: var(--danger); }
+    .sv-green { color: var(--accent); }
+    .sv-warn  { color: var(--warn); }
+    .sv-red   { color: var(--danger); }
+
+    /* Footer row */
+    tfoot tr { background: var(--stat-bg); }
+    tfoot td {
+      padding: .75rem 1rem;
+      font-size: .72rem; font-weight: 700; letter-spacing: .06em;
+      color: var(--accent);
+      border-top: 2px solid var(--accent);
+    }
+
+    /* ── States ──────────────────────────────────────────────── */
+    .rp-empty-state {
+      text-align: center; padding: 3.5rem 1rem;
+      color: var(--muted); font-size: .8rem; letter-spacing: .07em; line-height: 2.2;
+    }
+    .rp-empty-state .rp-empty-icon { font-size: 2rem; display: block; margin-bottom: .5rem; opacity: .4; }
+    .rp-loading-state {
+      display: flex; align-items: center; gap: .75rem; justify-content: center;
+      padding: 3rem 1rem; color: var(--muted); font-size: .78rem; letter-spacing: .06em;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      .rp-stats-grid { grid-template-columns: 1fr 1fr; }
+    }
     @media (max-width: 500px) {
-      .controls { flex-direction: column; align-items: stretch; }
-      .export-btn { margin-left: 0; }
+      .rp-controls { flex-direction: column; align-items: stretch; }
+      .rp-actions  { justify-content: flex-end; }
+      .rp-stats-grid { grid-template-columns: 1fr 1fr; gap: .6rem; }
+      .rp-stat-val { font-size: 1.5rem; }
     }
     @media print {
-      .controls { display: none !important; }
-      #summary-bar { border-bottom: 1px solid #ccc; }
+      .rp-controls, .rp-actions { display: none !important; }
       .pct-bar-wrap { display: none; }
       tfoot td { border-top: 2px solid #000; color: #000; }
     }
@@ -36,6 +169,10 @@
   <div class="nb-right">
     <div class="nb-cls-sel"><select id="nb-cls-select"></select></div>
     <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Toggle theme">&#9728; Light</button>
+    <div class="theme-switch">
+      <span class="ts-icon" id="ts-icon">☀</span>
+      <div class="ts-track" id="ts-track" onclick="toggleTheme()"><div class="ts-thumb"></div></div>
+    </div>
     <button class="mb" id="mb" aria-label="Open navigation menu" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
@@ -43,84 +180,132 @@
 <nav class="drawer" id="drawer"></nav>
 
 <div class="page-wrap">
-  <div class="card">
-    <h2>Monthly Report</h2>
 
-    <div class="controls">
-      <div class="field">
-        <label>Month</label>
-        <input type="month" id="month-pick">
-      </div>
-      <button class="btn btn-sm" style="align-self:flex-end;margin-top:0" onclick="loadReport()">Generate</button>
-      <a id="csv-btn" class="btn btn-sm btn-outline export-btn" style="align-self:flex-end;margin-top:0;display:none" href="#" download>↓ Export CSV</a>
+  <!-- Page heading -->
+  <div class="rp-header">
+    <div class="rp-title-block">
+      <div class="rp-title">Monthly Report</div>
+      <div class="rp-sub" id="rp-subtitle">Select a month and generate</div>
     </div>
-
-    <div id="summary-wrap" style="display:none">
-      <div id="summary-bar">
-        <div class="sb"><span class="sv sv-grey"  id="rp-days">—</span><span class="sl">Class Days</span></div>
-        <div class="sb"><span class="sv sv-grey"  id="rp-students">—</span><span class="sl">Students</span></div>
-        <div class="sb"><span class="sv sv-green" id="rp-ok">—</span><span class="sl">Above Threshold</span></div>
-        <div class="sb"><span class="sv sv-warn"  id="rp-below">—</span><span class="sl">Below Threshold</span></div>
-      </div>
-    </div>
-
-    <div id="loading" class="empty">
-      <span class="spinner"></span>
-      <div class="loading-status" id="loading-status">Preparing report...</div>
-    </div>
-
-    <div class="tbl-wrap">
-      <table id="rep-table" style="display:none">
-        <thead>
-          <tr>
-            <th class="num-col">#</th>
-            <th>Name</th>
-            <th>Roll</th>
-            <th>Present</th>
-            <th>Att%</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="rep-body"></tbody>
-        <tfoot><tr id="rep-foot"></tr></tfoot>
-      </table>
-    </div>
-    <div class="empty" id="rep-empty" style="display:none">No data for selected month.</div>
   </div>
+
+  <!-- Controls -->
+  <div class="rp-controls">
+    <div class="field">
+      <label>Month</label>
+      <input type="month" id="month-pick">
+    </div>
+    <div class="rp-ctrl-spacer"></div>
+    <div class="rp-actions">
+      <a id="csv-btn" class="btn btn-sm btn-outline" style="display:none" href="#" download>↓ CSV</a>
+      <button class="btn btn-sm" onclick="loadReport()">Generate Report</button>
+    </div>
+  </div>
+
+  <!-- Summary stat cards (hidden until data loads) -->
+  <div class="rp-stats-grid" id="summary-wrap" style="display:none">
+    <div class="rp-stat-card c-grey">
+      <div class="rp-stat-val" id="rp-days">—</div>
+      <div class="rp-stat-lbl">Class Days</div>
+      <div class="rp-stat-icon">📅</div>
+    </div>
+    <div class="rp-stat-card c-blue">
+      <div class="rp-stat-val" id="rp-students">—</div>
+      <div class="rp-stat-lbl">Total Students</div>
+      <div class="rp-stat-icon">👥</div>
+    </div>
+    <div class="rp-stat-card c-green">
+      <div class="rp-stat-val" id="rp-ok">—</div>
+      <div class="rp-stat-lbl">Above Threshold</div>
+      <div class="rp-stat-icon">✔</div>
+    </div>
+    <div class="rp-stat-card c-warn">
+      <div class="rp-stat-val" id="rp-below">—</div>
+      <div class="rp-stat-lbl">Below Threshold</div>
+      <div class="rp-stat-icon">⚠</div>
+    </div>
+  </div>
+
+  <!-- Table card -->
+  <div class="rp-table-card">
+    <!-- Loading state -->
+    <div class="rp-loading-state" id="rp-loading" style="display:none">
+      <span class="spinner"></span>
+      <span id="loading-status">Preparing report…</span>
+    </div>
+
+    <!-- Initial idle state -->
+    <div class="rp-empty-state" id="rp-idle">
+      <span class="rp-empty-icon">📊</span>
+      Select a month above and click <strong>Generate Report</strong>
+    </div>
+
+    <!-- No data state -->
+    <div class="rp-empty-state" id="rep-empty" style="display:none">
+      <span class="rp-empty-icon">🗂</span>
+      No attendance data for the selected month.
+    </div>
+
+    <!-- Table header + table -->
+    <div id="rep-table-section" style="display:none">
+      <div class="rp-table-head">
+        <div class="rp-table-head-title">Student Breakdown</div>
+        <div style="font-size:.65rem;color:var(--muted);letter-spacing:.06em" id="rp-avg-label"></div>
+      </div>
+      <div class="rp-table-wrap">
+        <table id="rep-table">
+          <thead>
+            <tr>
+              <th class="num-col">#</th>
+              <th>Name</th>
+              <th>Roll</th>
+              <th>Present / Days</th>
+              <th class="pct-cell">Attendance</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="rep-body"></tbody>
+          <tfoot><tr id="rep-foot"></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script src="/app.js"></script>
 <script>
-  let g_class      = 0;
-  let g_reportGen  = 0;
-  let g_rows       = [];
-  let g_classDays  = 0;
-  let g_minPct     = 75;
+  let g_class     = 0;
+  let g_reportGen = 0;
+  let g_rows      = [];
+  let g_classDays = 0;
+  let g_minPct    = 75;
 
   function esc(v) {
     return String(v == null ? '' : v)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
   function appendRow(r, idx) {
-    const pct     = Math.round(r.pct || 0);
-    const cls     = pct >= g_minPct ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red';
-    const barCls  = pct >= g_minPct ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red';
-    const status  = pct >= g_minPct ? '<span class="badge badge-green">OK</span>' : '<span class="badge badge-warn">Low</span>';
+    const pct    = Math.round(r.pct || 0);
+    const cls    = pct >= g_minPct ? 'sv-green' : pct >= 50 ? 'sv-warn' : 'sv-red';
+    const barCls = pct >= g_minPct ? 'pct-bar-green' : pct >= 50 ? 'pct-bar-warn' : 'pct-bar-red';
+    const badge  = pct >= g_minPct
+      ? '<span class="badge badge-green">OK</span>'
+      : '<span class="badge badge-warn">Low</span>';
 
     const tr = document.createElement('tr');
     tr.innerHTML =
       `<td class="num-col">${idx}</td>` +
-      `<td data-label="Name">${esc(r.name)}</td>` +
-      `<td data-label="Roll">${esc(r.roll)}</td>` +
-      `<td data-label="Present">${r.present || 0} / ${g_classDays}</td>` +
-      `<td data-label="Att%" class="pct-cell">` +
+      `<td>${esc(r.name)}</td>` +
+      `<td>${esc(r.roll)}</td>` +
+      `<td>${r.present || 0} / ${g_classDays}</td>` +
+      `<td class="pct-cell">` +
         `<div class="pct-num ${cls}">${pct}%</div>` +
         `<div class="pct-bar-wrap"><div class="pct-bar ${barCls}" style="width:${pct}%"></div></div>` +
       `</td>` +
-      `<td data-label="Status">${status}</td>`;
-
+      `<td>${badge}</td>`;
     document.getElementById('rep-body').appendChild(tr);
   }
 
@@ -135,32 +320,37 @@
 
   function renderFooter() {
     const total  = g_rows.length;
-    const avgPct = total ? Math.round(g_rows.reduce((s, r) => s + (r.pct || 0), 0) / total) : 0;
-    const okCnt  = g_rows.filter(r => (r.pct || 0) >= g_minPct).length;
+    const avgPct = total ? Math.round(g_rows.reduce((s,r) => s + (r.pct||0), 0) / total) : 0;
+    const okCnt  = g_rows.filter(r => (r.pct||0) >= g_minPct).length;
     document.getElementById('rep-foot').innerHTML =
-      `<td colspan="3">Class Average</td><td></td>` +
-      `<td>${avgPct}%</td>` +
-      `<td>${okCnt}/${total} OK</td>`;
+      `<td></td><td colspan="2" style="font-size:.7rem;letter-spacing:.06em">CLASS AVERAGE</td>` +
+      `<td></td><td class="pct-cell">${avgPct}%</td><td>${okCnt}/${total} OK</td>`;
+    document.getElementById('rp-avg-label').textContent =
+      `Class avg: ${avgPct}% · ${okCnt}/${total} students OK`;
   }
 
   function loadReport() {
-    const gen = ++g_reportGen;
+    const gen   = ++g_reportGen;
     const month = document.getElementById('month-pick').value;
     if (!month) { showToast('Please select a month', true); return; }
 
-    // Reset UI
-    document.getElementById('loading').style.display = 'block';
-    document.getElementById('loading-status').textContent = 'Preparing report...';
-    document.getElementById('rep-table').style.display = 'none';
-    document.getElementById('rep-empty').style.display = 'none';
-    document.getElementById('summary-wrap').style.display = 'none';
-    document.getElementById('csv-btn').style.display = 'none';
-    document.getElementById('rep-body').innerHTML = '';
-    document.getElementById('rep-foot').innerHTML = '';
+    const [yr, mo] = month.split('-');
+    const monthName = new Date(yr, mo - 1).toLocaleDateString('en-GB', { month:'long', year:'numeric' });
+    document.getElementById('rp-subtitle').textContent = 'Class ' + g_class + ' · ' + monthName;
 
-    g_rows = [];
-    g_classDays = 0;
-    g_minPct = 75;
+    // Reset UI
+    document.getElementById('rp-idle').style.display        = 'none';
+    document.getElementById('rp-loading').style.display     = 'flex';
+    document.getElementById('rep-table-section').style.display = 'none';
+    document.getElementById('rep-empty').style.display      = 'none';
+    document.getElementById('summary-wrap').style.display   = 'none';
+    document.getElementById('csv-btn').style.display        = 'none';
+    document.getElementById('rep-body').innerHTML           = '';
+    document.getElementById('rep-foot').innerHTML           = '';
+    document.getElementById('rp-avg-label').textContent     = '';
+    document.getElementById('loading-status').textContent   = 'Preparing report…';
+
+    g_rows = []; g_classDays = 0; g_minPct = 75;
 
     apiStreamReport(
       `/api/report?c=${g_class}&month=${month}`,
@@ -175,34 +365,26 @@
       r => {
         if (gen !== g_reportGen) return;
         g_rows.push(r);
-
-        // Show table on first row
         if (g_rows.length === 1) {
-          document.getElementById('loading').style.display = 'none';
-          document.getElementById('rep-table').style.display = 'table';
-          document.getElementById('summary-wrap').style.display = 'block';
+          document.getElementById('rp-loading').style.display     = 'none';
+          document.getElementById('rep-table-section').style.display = 'block';
+          document.getElementById('summary-wrap').style.display   = 'grid';
         }
-
         appendRow(r, g_rows.length);
         updateSummary();
-
-        // Optional: show progress
-        document.getElementById('loading-status').textContent = `Loaded ${g_rows.length} students...`;
+        document.getElementById('loading-status').textContent = `Loaded ${g_rows.length} students…`;
       },
 
       () => {
         if (gen !== g_reportGen) return;
-        document.getElementById('loading').style.display = 'none';
-        document.getElementById('summary-wrap').style.display = 'block'; // always show summary
+        document.getElementById('rp-loading').style.display = 'none';
+        document.getElementById('summary-wrap').style.display = 'grid';
         updateSummary();
-
         if (g_rows.length === 0) {
           document.getElementById('rep-empty').style.display = 'block';
           return;
         }
-
         renderFooter();
-
         const csvBtn = document.getElementById('csv-btn');
         csvBtn.href = `/api/admin/export-csv?c=${g_class}&type=attendance&month=${month}`;
         csvBtn.style.display = 'inline-flex';
@@ -210,7 +392,8 @@
 
       e => {
         if (gen !== g_reportGen) return;
-        document.getElementById('loading').style.display = 'none';
+        document.getElementById('rp-loading').style.display = 'none';
+        document.getElementById('rp-idle').style.display = 'block';
         showToast(e.message || 'Failed to load report', true);
       }
     );
@@ -218,7 +401,6 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     buildNavbar('report');
-
     const now = new Date();
     document.getElementById('month-pick').value =
       now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
