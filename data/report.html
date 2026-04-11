@@ -193,6 +193,8 @@
       () => {
         if (gen !== g_reportGen) return;
         document.getElementById('loading').style.display = 'none';
+        document.getElementById('summary-wrap').style.display = 'block'; // always show summary
+        updateSummary();
 
         if (g_rows.length === 0) {
           document.getElementById('rep-empty').style.display = 'block';

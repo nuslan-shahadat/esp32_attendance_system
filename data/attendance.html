@@ -264,6 +264,10 @@ function loadData() {
 
     () => {
       if (gen !== g_loadGen) return;
+      // Clear the "Loading Full Log…" placeholder if no log groups arrived
+      if (firstLogGroup && logBox) {
+        logBox.innerHTML = '<div class="empty-note">No attendance records yet.</div>';
+      }
       if (g_todayRows.length === 0 && tbody) {
         tbody.innerHTML = `<tr><td colspan="8" class="empty">No students found.</td></tr>`;
       }
