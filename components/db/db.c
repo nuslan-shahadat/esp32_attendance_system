@@ -379,19 +379,26 @@ int db_init(const db_spi_config_t *spi)
         else ESP_LOGW(TAG, "Could not pre-create %s — sqlite3_open may fail", DB_PATH);
 
         /* Inner loop: sqlite3_open with mid-loop WAL clear.
-         * Attempts 0-1: normal open.
-         * Attempt 2   : clear WAL/SHM first — handles post-flash corrupt WAL.
-         * Attempts 3-4: open on clean WAL.                                   */
+         * Attempts 0-1: normal open — the WAL may contain valid committed
+         *               data; do NOT touch it on a mere I/O error.
+         * Attempt 2+  : if the error is a real corruption error
+         *               (SQLITE_CORRUPT / SQLITE_NOTADB) clear the WAL and
+         *               retry.  A plain SQLITE_IOERR just means the card is
+         *               still settling; deleting the WAL in that case loses
+         *               all committed-but-uncheckpointed data.             */
+        bool wal_cleared = false;
         for (int attempt = 0; attempt < 5; attempt++) {
-            if (attempt == 2) {
-                ESP_LOGW(TAG, "db_init: sqlite3_open failed twice — clearing WAL");
+            if (attempt >= 2 && !wal_cleared &&
+                (rc == SQLITE_CORRUPT || rc == SQLITE_NOTADB)) {
+                ESP_LOGW(TAG, "db_init: WAL corrupt (rc=%d) — clearing WAL", rc);
                 remove(DB_PATH "-wal");
                 remove(DB_PATH "-shm");
+                wal_cleared = true;
             }
             rc = sqlite3_open(DB_PATH, &s_db);
             if (rc == SQLITE_OK) break;
-            ESP_LOGW(TAG, "db_init: sqlite3_open attempt %d: %s",
-                     attempt + 1, sqlite3_errmsg(s_db));
+            ESP_LOGW(TAG, "db_init: sqlite3_open attempt %d (rc=%d): %s",
+                     attempt + 1, rc, sqlite3_errmsg(s_db));
             sqlite3_close(s_db);
             s_db = NULL;
             vTaskDelay(pdMS_TO_TICKS(1000));
@@ -688,23 +695,17 @@ int db_sd_remount(void)
     FILE *touch = fopen(DB_PATH, "ab");
     if (touch) fclose(touch);
 
-    /* FIX-BUG-A: Remove a stale/corrupt WAL and SHM before retrying
-     * sqlite3_open().  When the SD card glitches mid-write the WAL file
-     * is left partially written.  SQLite tries to recover it on open and
-     * fails, causing all 5 retries to fail even after the card settles.
-     * Any writes recorded only in the WAL (not yet checkpointed) are
-     * already lost when the FAT volume was unmounted, so deleting the
-     * WAL here loses nothing extra and gives the open() a clean slate.  */
-    remove(DB_PATH "-wal");
-    remove(DB_PATH "-shm");
-
-    /* FIX-BUG-B: Release the mutex between retry attempts.  The original
-     * code held db_lock() for the entire retry loop, including the 2 s
-     * vTaskDelay() between attempts — up to 10 s total.  Any FreeRTOS
-     * task that called db_lock() during that window (RFID handler, HTTP
-     * API) was blocked for the full duration.  Now lock/unlock wraps only
-     * the sqlite3_open() call itself; the delay runs without the lock.   */
+    /* Open SQLite — try without touching the WAL first so that any
+     * committed-but-not-yet-checkpointed data survives.  Only delete
+     * the WAL/SHM if the open fails with an actual corruption error
+     * (SQLITE_CORRUPT / SQLITE_NOTADB).  A plain SQLITE_IOERR just
+     * means the card is still settling; the WAL is intact and must not
+     * be destroyed.
+     *
+     * FIX-BUG-B: Release the mutex between retry attempts so that the
+     * RFID handler and HTTP tasks are not blocked for the full delay. */
     int rc = SQLITE_OK;
+    bool wal_cleared = false;
     for (int attempt = 0; attempt < 5; attempt++) {
         db_lock();
         rc = sqlite3_open(DB_PATH, &s_db);
@@ -719,11 +720,23 @@ int db_sd_remount(void)
             db_unlock();
             break;
         }
-        ESP_LOGW(TAG, "SD remount: sqlite3_open attempt %d: %s",
-                 attempt + 1, sqlite3_errmsg(s_db));
+        ESP_LOGW(TAG, "SD remount: sqlite3_open attempt %d (rc=%d): %s",
+                 attempt + 1, rc, sqlite3_errmsg(s_db));
         sqlite3_close(s_db);
         s_db = NULL;
-        db_unlock();                        /* release before sleeping */
+        db_unlock();
+
+        /* Only clear the WAL when the error is a real corruption error,
+         * not a transient I/O error while the card is settling.
+         * Clearing on SQLITE_IOERR would destroy valid committed data. */
+        if (!wal_cleared &&
+            (rc == SQLITE_CORRUPT || rc == SQLITE_NOTADB)) {
+            ESP_LOGW(TAG, "SD remount: WAL corrupt — clearing WAL/SHM");
+            remove(DB_PATH "-wal");
+            remove(DB_PATH "-shm");
+            wal_cleared = true;
+        }
+
         vTaskDelay(pdMS_TO_TICKS(1000));    /* yield — other tasks can run */
     }
 
@@ -753,18 +766,24 @@ esp_err_t db_sqlite_reopen(void)
 {
     ESP_LOGI(TAG, "db_sqlite_reopen: attempting to recover NULL handle...");
 
-    /* Remove stale WAL/SHM — if open() previously failed because the WAL
-     * was corrupt, retrying without clearing it fails for the same reason. */
-    remove(DB_PATH "-wal");
-    remove(DB_PATH "-shm");
-
     /* Pre-create the DB file in case the previous remount left none */
     FILE *touch = fopen(DB_PATH, "ab");
     if (touch) fclose(touch);
     else ESP_LOGW(TAG, "db_sqlite_reopen: fopen pre-create failed");
 
     int rc = SQLITE_OK;
+    bool wal_cleared = false;
     for (int attempt = 0; attempt < 5; attempt++) {
+        /* Only clear the WAL if a previous attempt returned a real corruption
+         * error.  Do not delete on SQLITE_IOERR — the WAL may be healthy and
+         * contain committed data; the card may just still be settling.       */
+        if (!wal_cleared && attempt >= 1 &&
+            (rc == SQLITE_CORRUPT || rc == SQLITE_NOTADB)) {
+            ESP_LOGW(TAG, "db_sqlite_reopen: WAL corrupt (rc=%d) — clearing WAL/SHM", rc);
+            remove(DB_PATH "-wal");
+            remove(DB_PATH "-shm");
+            wal_cleared = true;
+        }
         db_lock();
         rc = sqlite3_open(DB_PATH, &s_db);
         if (rc == SQLITE_OK) {
@@ -777,8 +796,8 @@ esp_err_t db_sqlite_reopen(void)
             db_unlock();
             break;
         }
-        ESP_LOGW(TAG, "db_sqlite_reopen: attempt %d: %s",
-                 attempt + 1, sqlite3_errmsg(s_db));
+        ESP_LOGW(TAG, "db_sqlite_reopen: attempt %d (rc=%d): %s",
+                 attempt + 1, rc, sqlite3_errmsg(s_db));
         sqlite3_close(s_db);
         s_db = NULL;
         db_unlock();

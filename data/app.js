@@ -587,13 +587,109 @@ window.apiUpload = function (url, formData) {
   });
 };
 
-// ── Status cache (5-minute TTL for NTP check) ──────────────────────
-var _statusCache = null, _statusTs = 0;
-function getStatus() {
-  var now = Date.now();
-  if (_statusCache && now - _statusTs < 300000) return Promise.resolve(_statusCache);
-  return api('/api/status').then(function (s) { _statusCache = s; _statusTs = Date.now(); return s; });
-}
+// ── Live status polling — NTP + RFID banners ───────────────────────
+// Polls /api/status every 30 s. Shows a banner for each problem and
+// auto-dismisses it as soon as the condition clears.  Polling stops
+// once both issues are resolved (or the page is navigated away).
+(function () {
+  var _pollTimer = null;
+
+  function _removeBanner(id) {
+    var el = document.getElementById(id);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  function _ensureBanner(id, html, bgColor) {
+    if (document.getElementById(id)) return;
+    var b = document.createElement('div');
+    b.id = id;
+    b.style.cssText =
+      'position:fixed;top:0;left:0;right:0;z-index:9999;' +
+      'background:' + bgColor + ';color:#fff;font-size:.72rem;' +
+      'letter-spacing:.06em;text-align:center;padding:.45rem .75rem;' +
+      'display:flex;align-items:center;justify-content:center;gap:.6rem;';
+    b.innerHTML = html;
+    // Stack below any banner already present
+    var existing = document.querySelector('[id$="-warning-banner"]');
+    if (existing && existing.nextSibling) {
+      document.body.insertBefore(b, existing.nextSibling);
+    } else {
+      document.body.insertBefore(b, document.body.firstChild);
+    }
+  }
+
+  function _rfidReconnectBtn() {
+    return '<button onclick="window._rfidReconnect()" style="' +
+      'background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.5);' +
+      'color:#fff;border-radius:4px;padding:.2rem .55rem;font-size:.68rem;' +
+      'cursor:pointer;letter-spacing:.05em;">Reconnect</button>';
+  }
+
+  window._rfidReconnect = function () {
+    var btn = document.querySelector('#rfid-warning-banner button');
+    if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+    api('/api/admin/rfid-reconnect', 'POST', {})
+      .then(function (r) {
+        if (r && r.connected) {
+          _removeBanner('rfid-warning-banner');
+          showToast('RFID reader reconnected ✔');
+        } else {
+          showToast('RFID reader did not respond — try again', true);
+          if (btn) { btn.disabled = false; btn.textContent = 'Reconnect'; }
+        }
+      })
+      .catch(function () {
+        showToast('Reconnect request failed', true);
+        if (btn) { btn.disabled = false; btn.textContent = 'Reconnect'; }
+      });
+  };
+
+  function _applyStatus(s) {
+    if (!s) return;
+
+    // NTP banner
+    if (s.ntp_ok === false) {
+      _ensureBanner(
+        'ntp-warning-banner',
+        '\u26a0 Clock not synced \u2014 attendance timestamps may be incorrect. ' +
+        '<a href="/wifi-config.html" style="color:#fde68a;text-decoration:underline;">' +
+        'Connect to WiFi</a> to enable NTP sync.',
+        '#b45309'
+      );
+    } else {
+      _removeBanner('ntp-warning-banner');
+    }
+
+    // RFID banner
+    if (s.rfid_ok === false) {
+      _ensureBanner(
+        'rfid-warning-banner',
+        '\u26a0 RFID reader not connected \u2014 card scanning is unavailable. ' +
+        _rfidReconnectBtn(),
+        '#7c3aed'
+      );
+    } else {
+      _removeBanner('rfid-warning-banner');
+    }
+
+    // Stop polling once everything is healthy
+    var allOk = s.ntp_ok !== false && s.rfid_ok !== false;
+    if (allOk && _pollTimer) {
+      clearInterval(_pollTimer);
+      _pollTimer = null;
+    }
+  }
+
+  window._startStatusPolling = function () {
+    // Immediate first check — bypass any cache
+    api('/api/status').then(_applyStatus).catch(function () {});
+    // Then poll every 30 s
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollTimer = setInterval(function () {
+      api('/api/status').then(_applyStatus).catch(function () {});
+    }, 30000);
+  };
+})();
 
 // ── Navbar builder ─────────────────────────────────────────────────
 window.buildNavbar = function (activeId) {
@@ -619,29 +715,14 @@ window.buildNavbar = function (activeId) {
     brand.href = '/select-class.html';
   }
 
+  // Start live NTP + RFID status polling (shows/clears banners automatically)
+  if (typeof window._startStatusPolling === 'function') {
+    window._startStatusPolling();
+  }
+
   // Fetch session — determine if class is selected
   getSession().then(function (sess) {
     var hasClass = !!(sess && sess.class);
-
-    // FIX-36: Check NTP sync status and show a banner if the clock is unsynced.
-    // Attendance timestamps will be wrong (year 2000) without a successful sync.
-    getStatus().then(function (s) {
-      if (s && s.ntp_ok === false) {
-        var existing = document.getElementById('ntp-warning-banner');
-        if (!existing) {
-          var banner = document.createElement('div');
-          banner.id = 'ntp-warning-banner';
-          banner.style.cssText =
-            'position:fixed;top:0;left:0;right:0;z-index:9999;' +
-            'background:#b45309;color:#fff;font-size:.72rem;' +
-            'letter-spacing:.06em;text-align:center;padding:.45rem .75rem;';
-          banner.textContent =
-            '\u26a0 Clock not synced \u2014 attendance timestamps may be incorrect. ' +
-            'Connect to WiFi to enable NTP sync.';
-          document.body.insertBefore(banner, document.body.firstChild);
-        }
-      }
-    }).catch(function () {});
 
     // Class selector dropdown in navbar
     var clsSel = document.querySelector('.nb-cls-sel');

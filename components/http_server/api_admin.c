@@ -2,6 +2,7 @@
 #include "auth.h"
 #include "db.h"
 #include "wifi_mgr.h"
+#include "hid_rfid.h"
 #include "cJSON.h"
 #include "esp_system.h"
 #include "esp_heap_caps.h"
@@ -474,30 +475,34 @@ esp_err_t api_status_get(httpd_req_t *req)
     int cls = auth_get_selected_class();
     char *json = db_status_json(cls);
 
-    /* FIX-36: Inject ntp_ok into the status response so the frontend can
-     * show a clock-warning banner when the timestamp is unreliable. */
+    /* Inject ntp_ok and rfid_ok into the status response. */
     char *ntp_val = db_config_get("ntp_synced");
-    bool ntp_ok = (ntp_val && ntp_val[0] == '1');
+    bool ntp_ok  = (ntp_val && ntp_val[0] == '1');
     free(ntp_val);
+    bool rfid_ok = hid_rfid_is_connected();
 
     esp_err_t ret;
     if (json && json[0] == '{') {
-        /* Append "ntp_ok":true/false before the closing } */
         size_t jlen = strlen(json);
-        char *augmented = malloc(jlen + 32);
+        char *augmented = malloc(jlen + 64);
         if (augmented) {
-            /* Strip trailing } and add the field */
             memcpy(augmented, json, jlen - 1);
-            snprintf(augmented + jlen - 1, 32,
-                     ",\"ntp_ok\":%s}", ntp_ok ? "true" : "false");
+            snprintf(augmented + jlen - 1, 64,
+                     ",\"ntp_ok\":%s,\"rfid_ok\":%s}",
+                     ntp_ok  ? "true" : "false",
+                     rfid_ok ? "true" : "false");
             ret = http_send_json(req, 200, augmented);
             free(augmented);
         } else {
             ret = http_send_json(req, 200, json);
         }
     } else {
-        ret = http_send_json(req, 200,
-            ntp_ok ? "{\"ntp_ok\":true}" : "{\"ntp_ok\":false}");
+        char fallback[64];
+        snprintf(fallback, sizeof(fallback),
+                 "{\"ntp_ok\":%s,\"rfid_ok\":%s}",
+                 ntp_ok  ? "true" : "false",
+                 rfid_ok ? "true" : "false");
+        ret = http_send_json(req, 200, fallback);
     }
     free(json);
     return ret;
@@ -551,4 +556,20 @@ esp_err_t api_admin_reboot_post(httpd_req_t *req)
     vTaskDelay(pdMS_TO_TICKS(500));
     esp_restart();
     return ESP_OK;
+}
+
+/* POST /api/admin/rfid-reconnect
+ * Triggers a power-cycle of the USB RFID reader and waits up to 5 s
+ * for re-enumeration.  Returns {"ok":true,"connected":true/false}.
+ * Blocks the HTTP worker task for the duration — acceptable because
+ * hid_rfid_reconnect() is capped at ~6 s and the ESP-IDF httpd has
+ * multiple worker threads.                                           */
+esp_err_t api_admin_rfid_reconnect_post(httpd_req_t *req)
+{
+    if (!auth_check(req)) return http_send_err(req, 401, "unauthorized");
+    bool connected = hid_rfid_reconnect();
+    char buf[48];
+    snprintf(buf, sizeof(buf),
+             "{\"ok\":true,\"connected\":%s}", connected ? "true" : "false");
+    return http_send_json(req, 200, buf);
 }

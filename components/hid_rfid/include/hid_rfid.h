@@ -32,3 +32,10 @@ void hid_rfid_event_init(void);
 void hid_rfid_push_event(const char *uid, const char *name,
                          const char *time,  const char *status);
 void hid_rfid_get_last_event(hid_rfid_event_t *out);
+
+/* Returns true when a USB HID reader is currently enumerated. */
+bool hid_rfid_is_connected(void);
+
+/* Power-cycles the reader and waits up to 5 s for re-enumeration.
+ * Blocks the calling task; call only from a non-critical context. */
+bool hid_rfid_reconnect(void);

@@ -31,6 +31,7 @@ static QueueHandle_t        s_hid_queue   = NULL;
 static volatile bool        s_connected   = false;
 static volatile bool        s_shutdown    = false;
 static hid_rfid_card_cb_t   s_callback    = NULL;
+static gpio_num_t           s_power_pin   = GPIO_NUM_NC;
 
 /* Card accumulator (written from HID task) */
 static char    s_card_buf[UID_MAX_LEN];
@@ -204,6 +205,7 @@ static void usb_lib_task(void *arg)
 void hid_rfid_init(const hid_rfid_config_t *cfg)
 {
     s_callback  = cfg->on_card_uid;
+    s_power_pin = cfg->power_pin;
     s_uid_queue = xQueueCreate(20, sizeof(uid_msg_t));
     s_hid_queue = xQueueCreate(10, sizeof(hid_event_t));
 
@@ -349,4 +351,38 @@ void hid_rfid_get_last_event(hid_rfid_event_t *out)
     if (s_event_mutex) xSemaphoreTake(s_event_mutex, portMAX_DELAY);
     *out = s_last_event;
     if (s_event_mutex) xSemaphoreGive(s_event_mutex);
+}
+
+/* ── Connection status ───────────────────────────────────────── */
+bool hid_rfid_is_connected(void)
+{
+    return s_connected;
+}
+
+/* ── Manual power-cycle (called from HTTP reconnect endpoint) ── *
+ * Runs a single power-off → power-on → wait-for-enumeration     *
+ * cycle from the calling task context.  The hid_host_task is     *
+ * event-driven and handles the resulting connect/disconnect       *
+ * events normally, so this is safe to call at any time.          */
+bool hid_rfid_reconnect(void)
+{
+    if (s_power_pin == GPIO_NUM_NC) return false;   /* not initialised */
+
+    ESP_LOGI("hid_rfid", "reconnect: power-cycling RFID reader…");
+    s_connected = false;
+    gpio_set_level(s_power_pin, 1);                 /* power OFF */
+    vTaskDelay(pdMS_TO_TICKS(800));
+    gpio_set_level(s_power_pin, 0);                 /* power ON  */
+
+    /* Wait up to 5 s for USB enumeration */
+    TickType_t t0 = xTaskGetTickCount();
+    while (xTaskGetTickCount() - t0 < pdMS_TO_TICKS(5000)) {
+        if (s_connected) {
+            ESP_LOGI("hid_rfid", "reconnect: reader enumerated");
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+    ESP_LOGW("hid_rfid", "reconnect: reader did not enumerate");
+    return false;
 }

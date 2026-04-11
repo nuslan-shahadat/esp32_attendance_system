@@ -58,6 +58,7 @@ esp_err_t api_admin_backup_post(httpd_req_t *req);
 esp_err_t api_admin_backup_list_get(httpd_req_t *req);
 esp_err_t api_admin_restore_backup_post(httpd_req_t *req);
 esp_err_t api_admin_sd_remount_post(httpd_req_t *req);
+esp_err_t api_admin_rfid_reconnect_post(httpd_req_t *req);
 esp_err_t api_admin_sd_health_get(httpd_req_t *req);
 esp_err_t api_admin_delete_backup_get(httpd_req_t *req);
 esp_err_t api_admin_export_csv_get(httpd_req_t *req);
@@ -134,6 +135,7 @@ static const httpd_uri_t routes[] = {
     ROUTE(HTTP_GET,  "/api/admin/backup-list",     api_admin_backup_list_get),
     ROUTE(HTTP_POST, "/api/admin/restore-backup",  api_admin_restore_backup_post),
     ROUTE(HTTP_POST, "/api/admin/sd-remount",      api_admin_sd_remount_post),
+    ROUTE(HTTP_POST, "/api/admin/rfid-reconnect",  api_admin_rfid_reconnect_post),
     ROUTE(HTTP_GET,  "/api/admin/sd-health",       api_admin_sd_health_get),
     ROUTE(HTTP_GET,  "/api/admin/delete-backup",     api_admin_delete_backup_get),
     ROUTE(HTTP_GET,  "/api/admin/export-csv",     api_admin_export_csv_get),
